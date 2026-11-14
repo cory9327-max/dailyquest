@@ -216,7 +216,6 @@
   #partyToday{margin-top:12px}
   .sharebox{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px}
   .sbtitle{font-weight:500;font-size:14px}
-  .sharebox .seg.mini button:disabled{opacity:.4}
   .pevs{display:flex;flex-direction:column}
   .pev{display:flex;align-items:center;gap:8px;padding:7px 2px;border-top:1px solid var(--line);font-size:13px}
   .pev:first-child{border-top:0}
@@ -3323,11 +3322,11 @@
 
   function pqPk(per,k){ return per==="day" ? k : per==="week" ? weekStart(k) : per==="month" ? k.slice(0,7)+"-01" : "once"; }
   function pqInPeriod(per,day,k){ return pqPk(per,day)===pqPk(per,k); }
-  // share settings per party: {q: quests, e: events, days: 1|7|30}
+  // share settings per party: {q: quests, e: events} — shared until turned off
   function shareCfg(gid){
     const v=S.settings.share && S.settings.share[gid]; if (!v) return null;
-    if (v===true) return {q:true, e:false, days:1};
-    return {q:!!v.q, e:!!v.e, days:[1,7,30].includes(Number(v.days)) ? Number(v.days) : 1};
+    if (v===true) return {q:true, e:false};
+    return {q:!!v.q, e:!!v.e};
   }
   function shareOn(gid){ const c=shareCfg(gid); return !!(c && (c.q||c.e)); }
 
@@ -3456,71 +3455,75 @@
     box.appendChild(wrap);
   }
 
-  // my opt-in share (quests and/or events, today or the next 7 / 30 days)
+  // my opt-in share: the whole quest list (with schedules and today's state) and all upcoming events
   let shTimer=null, shLast={};
   function scheduleShare(){ if (!S.db || !S.loaded || !FB.user) return; clearTimeout(shTimer); shTimer=setTimeout(writeShares,2500); }
-  function sharedQuests(k, withState){
-    return questsFor(k).filter(q=>q.type!=="gone").map(q=>{
-      const o={t:q.title, p:pts(q)}; const c=catOf(q.cat); if (c) o.cat=c.name;
-      if (q.time) o.time=q.time; else if (q.when && WHEN[q.when]) o.when=WHEN[q.when][0];
-      if (withState){ o.done=!!q.doneKey; const req=reqSteps(q,k); if (req.length){ const set=stepDone(q,k); o.steps=req.filter(s=>set.has(s.id)).length+"/"+req.length; } }
-      return o; }).slice(0,30);
+  function shareQuestList(){
+    const tk=todayKey(), todays=new Map(questsFor(tk).map(q=>[q.id,q]));
+    return [...S.quests.entries()].map(([id,q0])=>({id,...q0}))
+      .filter(q=> !(kindOf(q)==="once" && q.date<tk))
+      .map(q=>{
+        const o={t:q.title, p:pts(q), sched:scheduleText(q)}; const c=catOf(q.cat); if (c) o.cat=c.name;
+        if (q.time) o.when=ampm(q.time).ap+" "+ampm(q.time).t; else if (q.when && WHEN[q.when]) o.when=WHEN[q.when][0];
+        if (q.steps && q.steps.length) o.nsteps=q.steps.length;
+        const tq=todays.get(q.id);
+        if (tq){ o.today=true; o.done=!!tq.doneKey; const req=reqSteps(tq,tk); if (req.length){ const set=stepDone(tq,tk); o.steps=req.filter(s=>set.has(s.id)).length+"/"+req.length; } }
+        else { const nx=nextOccurrence(q, addDays(tk,1)); if (nx) o.next=nx; }
+        return o; })
+      .sort((a,b)=>(b.today?1:0)-(a.today?1:0) || ((a.next||"")<(b.next||"")?-1:1))
+      .slice(0,60);
   }
+  function shareEventList(){
+    const tk=todayKey(), out=[];
+    for (const [id,e] of S.events){
+      const rep=e.repeat && e.repeat!=="none";
+      if (!rep){ if (e.date>=tk) out.push(evOut(e,e.date)); continue; }
+      // repeating: the next 60 days of occurrences
+      for (let i=0;i<60;i++){ const k=addDays(tk,i); if (occursOn(e,k)) out.push({...evOut(e,k), rep:repeatText(e).replace("🔁 ","")}); }
+    }
+    return out.sort((a,b)=>(a.date+(a.time||""))<(b.date+(b.time||""))?-1:1).slice(0,300);
+  }
+  function evOut(e,k){ const o={t:e.title, date:k}; if (e.time) o.time=e.time; if (e.end) o.end=e.end; const c=catOf(e.cat); if (c) o.cat=c.name; return o; }
   function writeShares(){
-    const tk=todayKey(), cache={};
+    const tk=todayKey(); let ql=null, el=null;
     for (const gid of P.groups.keys()){
       const ref=FB.fs.collection("groups").doc(gid).collection("share").doc(S.uid);
       const cfg=shareCfg(gid);
       if (!cfg || (!cfg.q && !cfg.e)){ if (shLast[gid]!=="off"){ shLast[gid]="off"; ref.delete().catch(()=>{}); } continue; }
-      const body={nick:myNick()||"모험가", date:tk, range:cfg.days, q:cfg.q, e:cfg.e, quests:[], days:{}, events:[]};
-      if (cfg.q){
-        body.quests = cache[tk+"!"] || (cache[tk+"!"]=sharedQuests(tk,true));
-        for (let i=1;i<cfg.days;i++){ const k=addDays(tk,i); const l=cache[k]||(cache[k]=sharedQuests(k,false)); if (l.length) body.days[k]=l; }
-      }
-      if (cfg.e){
-        for (let i=0;i<cfg.days;i++){ const k=addDays(tk,i);
-          for (const e of eventsOn(k)){ const o={t:e.title, date:k}; if (e.time) o.time=e.time; if (e.end) o.end=e.end; const c=catOf(e.cat); if (c) o.cat=c.name; body.events.push(o); } }
-        body.events=body.events.slice(0,300);
-      }
+      const body={v:2, nick:myNick()||"모험가", date:tk, q:cfg.q, e:cfg.e, qlist:[], events:[]};
+      if (cfg.q) body.qlist = ql || (ql=shareQuestList());
+      if (cfg.e) body.events = el || (el=shareEventList());
       const key=JSON.stringify(body); if (shLast[gid]===key) continue; shLast[gid]=key;
       ref.set({...body, updated:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("share",e));
     }
   }
-  // what a member shared, from today on, grouped by date
-  function shareDates(s){
-    const tk=todayKey(), out=new Map(), add=(k)=>{ if (!out.has(k)) out.set(k,{quests:[],events:[],today:false}); return out.get(k); };
-    if (s.date===tk && (s.quests||[]).length){ const d=add(tk); d.quests=s.quests; d.today=true; }
-    for (const k in (s.days||{})) if (k>=tk && !(k===tk && s.date===tk)) add(k).quests=s.days[k];
-    // a share written yesterday still covers the dates after it
-    if (s.date<tk) for (const k in (s.days||{})) if (k===tk) add(k).quests=s.days[k];
-    for (const e of (s.events||[])) if (e.date>=tk){ if (e.date===tk && e.time && e.time< nowHM() && (!e.end || e.end<nowHM())) continue; add(e.date).events.push(e); }
-    return [...out.entries()].filter(([,v])=>v.quests.length||v.events.length).sort((a,b)=>a[0]<b[0]?-1:1);
+  // a member's shared events from today on (older one-day shares are ignored)
+  function shareEvents(s){
+    const tk=todayKey(), n=nowHM();
+    return (s.events||[]).filter(e=> e.date>tk || (e.date===tk && !(e.time && (e.end||e.time)<n)));
   }
-  function shareHasContent(s){ return shareDates(s).length>0; }
+  function shareHasContent(s){ return (s.v===2 && ((s.qlist||[]).length || shareEvents(s).length)) || false; }
 
   // party card extras: share settings, party schedule, party quests, sent gifts
   function partyCardExtras(card,gid,g){
-    const cfg=shareCfg(gid)||{q:false,e:false,days:1};
+    const cfg=shareCfg(gid)||{q:false,e:false};
     const box=document.createElement("div"); box.className="sharebox";
     const top=document.createElement("div"); top.className="sbtitle"; top.textContent="🔓 이 파티에 내 것 공개";
     const chips=document.createElement("div"); chips.className="chips"; chips.style.marginTop="8px";
-    const save=(patch)=>{ const s={...(S.settings.share||{})}; const n={...cfg, ...patch}; if (!n.q && !n.e) delete s[gid]; else s[gid]={q:n.q, e:n.e, days:n.days};
+    const save=(patch)=>{ const s={...(S.settings.share||{})}; const n={...cfg, ...patch}; if (!n.q && !n.e) delete s[gid]; else s[gid]={q:n.q, e:n.e};
       saveSettings({share:s}); shLast[gid]=null; scheduleShare(); renderParty(); };
     const qc=chip((cfg.q?"✓ ":"")+"⚔️ 퀘스트",cfg.q?"#b48cff":null,cfg.q); qc.onclick=()=>save({q:!cfg.q});
     const ec=chip((cfg.e?"✓ ":"")+"📅 일정",cfg.e?"#6aa8ff":null,cfg.e); ec.onclick=()=>save({e:!cfg.e});
     chips.append(qc,ec);
-    const seg=document.createElement("div"); seg.className="seg mini"; seg.style.marginTop="8px";
-    [[1,"오늘만"],[7,"앞으로 7일"],[30,"앞으로 30일"]].forEach(([d,l])=>{ const b=document.createElement("button"); b.type="button"; b.textContent=l; b.classList.toggle("on",cfg.days===d); b.disabled=!(cfg.q||cfg.e);
-      b.onclick=()=>save({days:d}); seg.appendChild(b); });
     const hint=document.createElement("div"); hint.className="hint";
-    hint.textContent = !(cfg.q||cfg.e) ? "아무것도 공개하지 않고 있어요. 공개하면 이 파티 사람들만 볼 수 있어요. (메모·상점·기록은 공개되지 않아요)"
-      : [cfg.q?"퀘스트":null, cfg.e?"일정":null].filter(Boolean).join("·")+"을(를) "+(cfg.days===1?"오늘 것만":"오늘부터 "+cfg.days+"일 동안")+" 이 파티에 보여주고 있어요. 앱을 열 때마다 새로 반영돼요.";
-    box.append(top,chips,seg,hint); card.appendChild(box);
+    hint.textContent = !(cfg.q||cfg.e) ? "아무것도 공개하지 않고 있어요. 켜면 이 파티 사람들만, 끌 때까지 계속 볼 수 있어요. (메모·상점·기록은 공개되지 않아요)"
+      : [cfg.q?"퀘스트 목록(주기·오늘 완료 여부)":null, cfg.e?"앞으로의 일정":null].filter(Boolean).join("과 ")+"을 끌 때까지 계속 공개하고 있어요. 바꾼 내용은 앱을 열 때마다 반영돼요.";
+    box.append(top,chips,hint); card.appendChild(box);
 
     // party schedule: members' shared events
     const evs=[];
     for (const [uid,s] of (PQ.shares.get(gid)||new Map())){ if (!s.e) continue; const nick=uid===S.uid?"나":(s.nick||"파티원");
-      for (const [k,v] of shareDates(s)) v.events.forEach(e=>evs.push({...e, nick, me:uid===S.uid})); }
+      shareEvents(s).forEach(e=>evs.push({...e, nick, me:uid===S.uid})); }
     evs.sort((a,b)=>(a.date+(a.time||"00:00"))<(b.date+(b.time||"00:00"))?-1:1);
     const eh=document.createElement("div"); eh.className="evhead"; eh.style.margin="14px 0 6px";
     const et=document.createElement("span"); et.textContent="📅 파티원 일정"; et.style.fontSize="16px"; eh.appendChild(et); card.appendChild(eh);
@@ -3550,25 +3553,43 @@
     const box=$("partyCal"); if (!box) return; box.innerHTML="";
     const seen=new Set(), evs=[];
     for (const [gid,m] of PQ.shares) for (const [uid,s] of m){ if (uid===S.uid || !s.e) continue;
-      for (const [k,v] of shareDates(s)) v.events.forEach(e=>{ const key=uid+e.date+(e.time||"")+e.t; if (seen.has(key)) return; seen.add(key); evs.push({...e, nick:s.nick||"파티원"}); }); }
+      shareEvents(s).forEach(e=>{ const key=uid+e.date+(e.time||"")+e.t; if (seen.has(key)) return; seen.add(key); evs.push({...e, nick:s.nick||"파티원"}); }); }
     if (!evs.length) return;
     evs.sort((a,b)=>(a.date+(a.time||"00:00"))<(b.date+(b.time||"00:00"))?-1:1);
     const h=document.createElement("div"); h.className="evhead"; h.style.marginTop="20px"; const t=document.createElement("span"); t.textContent="👥 파티원 일정"; h.appendChild(t); box.appendChild(h);
     const w=document.createElement("div"); w.className="pevs card"; w.style.marginTop="0"; evs.slice(0,30).forEach(e=>w.appendChild(partyEvRow(e))); box.appendChild(w);
   }
   function memberShareBlock(gid,uid){
-    const s=(PQ.shares.get(gid)||new Map()).get(uid); if (!s) return null;
-    const dates=shareDates(s); if (!dates.length) return null;
-    const w=document.createElement("div"); w.className="mshare";
-    const key=gid+"|"+uid+"|all", all=PQ.open.has(key), show=all?dates:dates.slice(0,3);
-    show.forEach(([k,v])=>{
-      const h=document.createElement("div"); h.className="msd"; h.textContent=dLabel(k); w.appendChild(h);
-      v.events.forEach(e=>{ const r=document.createElement("div"); r.className="msq msev"; r.textContent="📅 "+(e.time?ampm(e.time).ap+" "+ampm(e.time).t+" ":"")+e.t; w.appendChild(r); });
-      v.quests.forEach(q=>{ const r=document.createElement("div"); r.className="msq"+(q.done?" on":"");
-        r.textContent=(v.today?(q.done?"✅ ":"⬜ "):"· ")+q.t+(q.steps&&!q.done?" ("+q.steps+")":"")+(q.when?" · "+q.when:q.time?" · "+ampm(q.time).ap+" "+ampm(q.time).t:"")+(q.cat?" · "+q.cat:""); w.appendChild(r); });
-    });
-    if (dates.length>3){ const m=document.createElement("button"); m.type="button"; m.className="linkbtn"; m.textContent=all?"접기":"앞으로 "+(dates.length-3)+"일 더 보기";
-      m.onclick=ev=>{ ev.stopPropagation(); all?PQ.open.delete(key):PQ.open.add(key); renderParty(); }; w.appendChild(m); }
+    const s=(PQ.shares.get(gid)||new Map()).get(uid); if (!s || !shareHasContent(s)) return null;
+    const w=document.createElement("div"); w.className="mshare"; const tk=todayKey();
+    const kq=gid+"|"+uid+"|q", ke=gid+"|"+uid+"|e";
+    const ql=s.qlist||[];
+    if (s.q){
+      const fresh = s.date===tk;
+      const today=ql.filter(q=>q.today);
+      const h=document.createElement("div"); h.className="msd"; h.textContent="오늘 퀘스트"+(fresh?"":" (마지막으로 연 날 기준)"); w.appendChild(h);
+      if (!today.length){ const r=document.createElement("div"); r.className="msq"; r.style.color="var(--dim)"; r.textContent="오늘 할 퀘스트 없음"; w.appendChild(r); }
+      today.forEach(q=>{ const r=document.createElement("div"); const done=fresh && q.done; r.className="msq"+(done?" on":"");
+        r.textContent=(fresh?(done?"✅ ":"⬜ "):"· ")+q.t+(q.steps&&!done&&fresh?" ("+q.steps+")":"")+(q.when?" · "+q.when:""); w.appendChild(r); });
+      const rest=ql.filter(q=>!q.today);
+      if (rest.length){
+        const open=PQ.open.has(kq);
+        const h2=document.createElement("div"); h2.className="msd"; h2.textContent="전체 퀘스트 "+ql.length+"개"; w.appendChild(h2);
+        (open?rest:rest.slice(0,4)).forEach(q=>{ const r=document.createElement("div"); r.className="msq";
+          r.textContent="· "+q.t+" — "+q.sched.replace(/^[^\s]+\s/,"")+(q.when?" · "+q.when:"")+(q.next?" · 다음 "+dLabel(q.next):"")+(q.cat?" · "+q.cat:""); w.appendChild(r); });
+        if (rest.length>4){ const m=document.createElement("button"); m.type="button"; m.className="linkbtn"; m.textContent=open?"접기":(rest.length-4)+"개 더 보기";
+          m.onclick=ev=>{ ev.stopPropagation(); open?PQ.open.delete(kq):PQ.open.add(kq); renderParty(); }; w.appendChild(m); }
+      }
+    }
+    if (s.e){
+      const evs=shareEvents(s), open=PQ.open.has(ke);
+      const h=document.createElement("div"); h.className="msd"; h.textContent="다가오는 일정"+(evs.length?" "+evs.length+"개":""); w.appendChild(h);
+      if (!evs.length){ const r=document.createElement("div"); r.className="msq"; r.style.color="var(--dim)"; r.textContent="예정된 일정 없음"; w.appendChild(r); }
+      (open?evs:evs.slice(0,5)).forEach(e=>{ const r=document.createElement("div"); r.className="msq msev";
+        r.textContent="📅 "+dLabel(e.date)+" "+(e.time?ampm(e.time).ap+" "+ampm(e.time).t+" ":"")+e.t+(e.rep?" ("+e.rep+")":""); w.appendChild(r); });
+      if (evs.length>5){ const m=document.createElement("button"); m.type="button"; m.className="linkbtn"; m.textContent=open?"접기":(evs.length-5)+"개 더 보기";
+        m.onclick=ev=>{ ev.stopPropagation(); open?PQ.open.delete(ke):PQ.open.add(ke); renderParty(); }; w.appendChild(m); }
+    }
     return w;
   }
 
