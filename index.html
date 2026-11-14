@@ -206,6 +206,7 @@
   .ot{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .os{font-size:12px;color:var(--dim)}
   .orow .on{font-size:12px;color:var(--gold2);white-space:nowrap}
+  .tag.gift{background:rgba(255,107,154,.14);color:#ffa3c4}
   .tag.freq{background:rgba(106,168,255,.14);color:#a9cbff}
   .tag.freq.ok{background:rgba(95,214,138,.15);color:var(--green)}
   .tag.hold{background:rgba(245,196,81,.14);color:var(--gold2)}
@@ -213,6 +214,18 @@
   #gcalCard{display:none!important}
   #viewParty{margin-top:16px}
   #partyToday{margin-top:12px}
+  .pgift{width:34px;height:34px;border-radius:10px;background:var(--panel2);font-size:16px;flex:none}
+  .giftbox{margin:16px 0 0;border-color:rgba(255,107,154,.4);background:linear-gradient(150deg,#3a1f33,#1e1b2e 70%)}
+  .grow2{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line)}
+  .grow2:nth-of-type(1){border-top:0}
+  .gw{flex:1;min-width:0}
+  .gt{font-size:14px;font-weight:500;word-break:break-word}
+  .gs{font-size:12px;color:var(--dim);margin-top:2px;word-break:break-word}
+  .srow{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:12px}
+  .srow .st{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+  .srow .ss{padding:1px 7px;border-radius:6px;background:var(--panel2);color:var(--dim)}
+  .srow .ss.accepted{color:var(--green);background:rgba(95,214,138,.15)}
+  .srow .ss.declined{color:#ff9aa5;background:rgba(255,107,122,.15)}
   .quest.pq{border-left-color:#b48cff}
   .prow.clickable{cursor:pointer}
   .pshare{font-size:14px;color:var(--purple);flex:none}
@@ -432,6 +445,7 @@
   </div>
 
   <div id="viewQuests">
+  <div id="giftInbox"></div>
   <div class="card goals hidden" id="goalsCard">
     <div class="evhead" style="margin:0 0 6px"><span id="goalsTitle" style="font-size:17px">이번 주 · 이번 달 목표</span><button type="button" class="linkbtn" id="goalsEdit">목표 설정</button></div>
     <div id="goalsList"></div>
@@ -881,6 +895,39 @@
       <button type="button" class="btn" id="buyYes">구매</button>
     </div>
   </div>
+</div>
+
+<!-- gift -->
+<div class="modal-bg" id="gfModal">
+  <form class="modal" id="gfForm">
+    <h2 id="gfTitleH">🎁 만들어 주기</h2>
+    <div class="seg" id="gfKind" style="margin-bottom:14px"><button type="button" data-v="quest">⚔️ 퀘스트</button><button type="button" data-v="shop">🛒 상점 상품</button></div>
+    <div class="field"><label id="gfNameLabel">퀘스트 이름</label>
+      <input type="text" id="gfName" maxlength="80" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 12px;outline:none"></div>
+    <div id="gfQuest">
+      <div class="field"><label>점수</label>
+        <div class="seg" id="gfXp"><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button><button type="button" data-v="5">5</button></div></div>
+      <div class="field"><label>반복</label>
+        <div class="seg" id="gfType"><button type="button" data-v="daily">매일</button><button type="button" data-v="weekly">매주 한 번</button><button type="button" data-v="monthly">매월 한 번</button><button type="button" data-v="once">한 번만</button></div>
+        <div class="timerow hidden" id="gfDateRow" style="margin-top:8px"><span>날짜</span><input type="date" id="gfDate" style="width:auto"></div></div>
+      <div class="field"><label>언제 (선택)</label>
+        <div class="seg" id="gfWhen"><button type="button" data-v="">상관없음</button><button type="button" data-v="morning">아침</button><button type="button" data-v="afternoon">오후</button><button type="button" data-v="evening">저녁</button><button type="button" data-v="night">밤</button></div></div>
+    </div>
+    <div id="gfShop" class="hidden">
+      <div class="field"><label>아이콘 (선택)</label>
+        <div class="timerow"><input type="text" id="gfEmoji" maxlength="4" placeholder="🎁" style="width:64px;text-align:center;font-size:20px">
+          <div class="emojis" id="gfEmojiPick"><button type="button">🎮</button><button type="button">☕</button><button type="button">🍗</button><button type="button">🍰</button><button type="button">🎬</button><button type="button">🛍️</button><button type="button">😴</button></div></div></div>
+      <div class="field"><label>가격</label>
+        <div class="timerow"><input type="number" id="gfCost" min="1" max="99999" inputmode="numeric" value="30" style="width:100px;font-family:'Do Hyeon';font-size:18px;color:var(--gold)"><span>P</span></div></div>
+      <div class="field"><label>구매 제한</label>
+        <div class="seg" id="gfLimit"><button type="button" data-v="none">제한 없음</button><button type="button" data-v="day">하루 1번</button><button type="button" data-v="week">주 N번</button><button type="button" data-v="month">월 N번</button><button type="button" data-v="once">한 번만</button></div>
+        <div class="timerow hidden" id="gfLimitNRow" style="margin-top:8px"><span>최대</span><input type="number" id="gfLimitN" min="1" max="99" inputmode="numeric" value="1" style="width:70px"><span>번</span></div></div>
+    </div>
+    <div class="field"><label>한마디 (선택)</label>
+      <input type="text" id="gfMsg" maxlength="60" placeholder="예: 같이 힘내자!" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 12px;outline:none"></div>
+    <p class="hint">받는 사람이 '수락'하면 그 사람의 퀘스트·상점에 추가돼요. 추가된 뒤에는 받은 사람이 직접 고치거나 지울 수 있어요.</p>
+    <div class="actions"><button type="button" class="btn ghost" id="gfCancel">취소</button><button type="submit" class="btn">보내기</button></div>
+  </form>
 </div>
 
 <!-- party quest -->
@@ -1441,7 +1488,7 @@
     if (curTab==="shop") renderShop();
     pushWidgetSoon();
     schedulePub();
-    try{ renderPartyToday(); scheduleShare(); }catch(_){}
+    try{ renderPartyToday(); scheduleShare(); renderGiftInbox(); }catch(_){}
     if (curTab==="party") { try{ renderParty(); }catch(_){} }
     setTimeout(announceExtras,1500);
     if (curTab==="cal" && $("importG2")) $("importG2").classList.toggle("hidden",!MCP);
@@ -1460,6 +1507,7 @@
     if (cat){ const ct=document.createElement("span"); ct.className="tag"; ct.style.color=cat.color; ct.style.background=cat.color+"22"; ct.textContent=cat.name; m.appendChild(ct); }
     const st=document.createElement("span"); st.className="tag"; st.style.color=color(p); st.textContent=STARS[p]; m.appendChild(st);
     const ty=document.createElement("span"); ty.textContent=scheduleText(q); m.appendChild(ty);
+    if (q.from){ const gf=document.createElement("span"); gf.className="tag gift"; gf.textContent="🎁 "+q.from; m.appendChild(gf); }
     const fq=q.type!=="gone" ? freqOf(q) : null;
     if (fq){
       const c=freqCount(q,k), n=Number(fq.n), ok=c>=n;
@@ -2662,7 +2710,7 @@
       const c=document.createElement("div"); c.className="sitem"+(ls.ok?"":" soldout");
       const em=document.createElement("div"); em.className="sem"; em.textContent=it.emoji||"🎁";
       const nm=document.createElement("div"); nm.className="snm"; nm.textContent=it.name;
-      const meta=document.createElement("div"); meta.className="smeta"; meta.textContent=ls.text||"";
+      const meta=document.createElement("div"); meta.className="smeta"; meta.textContent=[it.from?"🎁 "+it.from+"의 선물":"", ls.text||""].filter(Boolean).join(" · ");
       const buy=document.createElement("button"); buy.type="button"; buy.className="sbuy"+(can?"":" no");
       buy.textContent = !ls.ok ? "구매 완료" : bal>=it.cost ? it.cost+"P 사기" : (it.cost-bal)+"P 부족";
       buy.disabled=!can;
@@ -3194,7 +3242,10 @@
         s.textContent="LV "+(r.p.lv||1)+" "+(r.p.title||"")+" · 오늘 "+r.today+((r.p.streak||0)>0?" · 🔥"+r.p.streak+"일":"")+(r.p.updated?" · "+ago(r.p.updated):"");
         w.append(n,s);
         const sc=document.createElement("span"); sc.className="psc"; sc.textContent=r.score+"P";
-        el.append(rk,w,sc); card.appendChild(el);
+        el.append(rk,w,sc);
+        if (r.id!==S.uid){ const gb=document.createElement("button"); gb.type="button"; gb.className="pgift"; gb.textContent="🎁"; gb.title="퀘스트·상품 만들어 주기";
+          gb.onclick=ev=>{ ev.stopPropagation(); openGift(gid, r.id, r.p.nick||"파티원"); }; el.insertBefore(gb, sc); }
+        card.appendChild(el);
         const shared=(PQ.shares.get(gid)||new Map()).get(r.id);
         if (shared && shared.date===tk){
           const key=gid+"|"+r.id; el.classList.add("clickable");
@@ -3276,7 +3327,7 @@
       }
     }
     for (const [key,un] of PQ.subs){ const gid=key.split(":")[1].split("|")[0]; if (!P.groups.has(gid)){ un(); PQ.subs.delete(key); PQ.quests.delete(gid); PQ.shares.delete(gid); } }
-    syncLogSubs();
+    syncLogSubs(); syncGiftSubs();
   }
   function syncLogSubs(){
     const tk=todayKey(), since=[weekStart(tk), tk.slice(0,7)+"-01"].sort()[0];
@@ -3416,6 +3467,7 @@
     const qs=PQ.quests.get(gid);
     if (!qs || !qs.size){ const e=document.createElement("div"); e.className="hint"; e.style.margin="0 0 4px"; e.textContent="아직 파티 퀘스트가 없어요. 누구나 만들 수 있어요. (예: 매일 물 2L — 각자 / 이번 주 다 같이 운동 20회 — 함께)"; card.appendChild(e); }
     else { const w=document.createElement("div"); w.className="list"; [...qs.entries()].forEach(([qid,q])=>w.appendChild(pqRow(gid,qid,q,false))); card.appendChild(w); }
+    const sb=sentBlock(gid); if (sb) card.appendChild(sb);
   }
   function memberShareBlock(gid,uid){
     const s=(PQ.shares.get(gid)||new Map()).get(uid);
@@ -3476,6 +3528,124 @@
     saveQuest("q"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), d);
     $("pqModal").classList.remove("open"); toast("내 퀘스트로 복사했어요");
   };
+  // ---------- gifts: make a quest or a shop item for a party member ----------
+  // groups/{gid}/gifts/{id} {to, from, fromNick, toNick, kind:"quest"|"shop", data, msg, status:"pending"|"accepted"|"declined", created}
+  const GF = { inbox:new Map(), outbox:new Map() };   // gid -> Map(id -> gift)
+  function syncGiftSubs(){
+    for (const gid of P.groups.keys()){
+      const col=FB.fs.collection("groups").doc(gid).collection("gifts");
+      if (!PQ.subs.has("gt:"+gid)) PQ.subs.set("gt:"+gid, col.where("to","==",S.uid).onSnapshot(s=>{ GF.inbox.set(gid,new Map(s.docs.map(d=>[d.id,d.data()]))); render(); renderParty(); }, e=>console.warn("gifts in",e)));
+      if (!PQ.subs.has("gf:"+gid)) PQ.subs.set("gf:"+gid, col.where("from","==",S.uid).onSnapshot(s=>{ GF.outbox.set(gid,new Map(s.docs.map(d=>[d.id,d.data()]))); renderParty(); }, e=>console.warn("gifts out",e)));
+    }
+    for (const [key,un] of PQ.subs){ if (!/^g[tf]:/.test(key)) continue; const gid=key.slice(3); if (!P.groups.has(gid)){ un(); PQ.subs.delete(key); GF.inbox.delete(gid); GF.outbox.delete(gid); } }
+  }
+  function giftSummary(g){
+    const d=g.data||{};
+    if (g.kind==="shop") return (d.emoji||"🎁")+" "+d.name+" · "+d.cost+"P"+(d.limit&&d.limit!=="none"?" · "+({day:"하루 1번",week:"주 "+(d.limitN||1)+"번",month:"월 "+(d.limitN||1)+"번",once:"한 번만"}[d.limit]||""):"");
+    const per={daily:"매일",weekly:"매주 한 번",monthly:"매월 한 번",once:"한 번"+(d.date?" ("+md(d.date)+")":"")}[d.type]||"매일";
+    return d.title+" · "+per+" · "+(d.xp||3)+"점";
+  }
+
+  // inbox on the quests tab
+  function renderGiftInbox(){
+    const box=$("giftInbox"); if (!box) return; box.innerHTML="";
+    const items=[]; for (const [gid,m] of GF.inbox) for (const [id,g] of m) if (g.status==="pending") items.push({gid,id,g});
+    if (!items.length) return;
+    const card=document.createElement("div"); card.className="card giftbox";
+    const h=document.createElement("h3"); h.textContent="🎁 받은 선물 "+items.length+"개"; card.appendChild(h);
+    items.sort((a,b)=>((a.g.created&&a.g.created.seconds)||0)-((b.g.created&&b.g.created.seconds)||0)).forEach(({gid,id,g})=>{
+      const r=document.createElement("div"); r.className="grow2";
+      const w=document.createElement("div"); w.className="gw";
+      const t=document.createElement("div"); t.className="gt"; t.textContent=(g.kind==="shop"?"🛒 상품 · ":"⚔️ 퀘스트 · ")+giftSummary(g);
+      const s=document.createElement("div"); s.className="gs"; const grp=P.groups.get(gid);
+      s.textContent=(g.fromNick||"파티원")+"님이 만들어 줬어요"+(grp?" · 👥 "+grp.name:"")+(g.msg?" — “"+g.msg+"”":"");
+      w.append(t,s);
+      const no=document.createElement("button"); no.type="button"; no.className="linkbtn"; no.style.color="var(--dim)"; no.textContent="거절";
+      no.onclick=()=>answerGift(gid,id,g,false);
+      const ok=document.createElement("button"); ok.type="button"; ok.className="btn"; ok.style.padding="7px 12px"; ok.style.fontSize="13px"; ok.textContent="수락";
+      ok.onclick=()=>answerGift(gid,id,g,true);
+      r.append(w,no,ok); card.appendChild(r);
+    });
+    box.appendChild(card);
+  }
+  const clampI=(v,a,b,d)=>{ v=Math.round(Number(v)); return v>=a&&v<=b ? v : d; };
+  async function answerGift(gid,id,g,accept){
+    const ref=FB.fs.collection("groups").doc(gid).collection("gifts").doc(id);
+    if (accept){
+      const d=g.data||{}, from=String(g.fromNick||"파티원").slice(0,16);
+      if (g.kind==="quest"){
+        const q={title:String(d.title||"").slice(0,80)||"선물 퀘스트", xp:clampI(d.xp,1,5,3), start:todayKey(), created:Date.now(), from};
+        if (d.type==="weekly"){ q.type="weekly"; q.anyDay=true; }
+        else if (d.type==="monthly"){ q.type="monthly"; q.anyDay=true; }
+        else if (d.type==="once"){ q.type="once"; q.date=/^\d{4}-\d{2}-\d{2}$/.test(d.date||"") && d.date>=todayKey() ? d.date : todayKey(); }
+        else q.type="daily";
+        if (d.when && WHEN[d.when]) q.when=d.when;
+        saveQuest("q"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), q);
+      } else {
+        const it={name:String(d.name||"").slice(0,30)||"선물 상품", cost:clampI(d.cost,1,99999,30), emoji:String(d.emoji||"").slice(0,4), limit:["none","day","week","month","once"].includes(d.limit)?d.limit:"none", created:Date.now(), from};
+        if (it.limit==="week"||it.limit==="month") it.limitN=clampI(d.limitN,1,99,1);
+        saveItem("s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), it);
+      }
+    }
+    try{ await ref.update({status: accept?"accepted":"declined", answered: firebase.firestore.FieldValue.serverTimestamp()}); }
+    catch(e){ console.warn(e); }
+    toast(accept ? (g.kind==="shop"?"🛒 상점에 추가했어요":"⚔️ 퀘스트에 추가했어요") : "거절했어요");
+  }
+
+  // sent list on the party card
+  function sentBlock(gid){
+    const m=GF.outbox.get(gid); if (!m || !m.size) return null;
+    const list=[...m.entries()].sort((a,b)=>((b[1].created&&b[1].created.seconds)||0)-((a[1].created&&a[1].created.seconds)||0)).slice(0,8);
+    const w=document.createElement("div"); w.className="sentbox";
+    const h=document.createElement("div"); h.className="hint"; h.style.margin="12px 0 4px"; h.textContent="🎁 내가 보낸 선물"; w.appendChild(h);
+    list.forEach(([id,g])=>{
+      const r=document.createElement("div"); r.className="srow";
+      const t=document.createElement("span"); t.className="st"; t.textContent="→ "+(g.toNick||"파티원")+" · "+giftSummary(g);
+      const s=document.createElement("span"); s.className="ss "+g.status; s.textContent={pending:"대기",accepted:"수락",declined:"거절"}[g.status]||g.status;
+      const x=document.createElement("button"); x.type="button"; x.className="linkbtn"; x.style.color="var(--dim)"; x.textContent=g.status==="pending"?"취소":"지우기";
+      x.onclick=async()=>{ try{ await FB.fs.collection("groups").doc(gid).collection("gifts").doc(id).delete(); }catch(_){ toast("지우지 못했어요"); } };
+      r.append(t,s,x); w.appendChild(r);
+    });
+    return w;
+  }
+
+  // gift editor
+  let gTo=null, gKind="quest", gType="daily", gXp=3, gLimit="none", gWhen="";
+  function openGift(gid,uid,nick){
+    gTo={gid,uid,nick}; gKind="quest"; gType="daily"; gXp=3; gLimit="none"; gWhen="";
+    $("gfTitleH").textContent="🎁 "+nick+"님에게 만들어 주기";
+    ["gfName","gfMsg","gfEmoji"].forEach(id=>$(id).value=""); $("gfCost").value=30; $("gfLimitN").value=1; $("gfDate").value=todayKey();
+    syncGift(); $("gfModal").classList.add("open"); setTimeout(()=>$("gfName").focus(),50);
+  }
+  function syncGift(){
+    [...$("gfKind").children].forEach(b=>b.classList.toggle("on",b.dataset.v===gKind));
+    [...$("gfType").children].forEach(b=>b.classList.toggle("on",b.dataset.v===gType));
+    [...$("gfXp").children].forEach(b=>b.classList.toggle("on",Number(b.dataset.v)===gXp));
+    [...$("gfLimit").children].forEach(b=>b.classList.toggle("on",b.dataset.v===gLimit));
+    [...$("gfWhen").children].forEach(b=>b.classList.toggle("on",b.dataset.v===gWhen));
+    $("gfQuest").classList.toggle("hidden",gKind!=="quest"); $("gfShop").classList.toggle("hidden",gKind!=="shop");
+    $("gfDateRow").classList.toggle("hidden",gType!=="once");
+    $("gfLimitNRow").classList.toggle("hidden",!(gLimit==="week"||gLimit==="month"));
+    $("gfNameLabel").textContent = gKind==="quest" ? "퀘스트 이름" : "상품 이름";
+    $("gfName").placeholder = gKind==="quest" ? "예: 하루 30분 산책하기" : "예: 주말에 영화 보기";
+  }
+  [["gfKind",v=>gKind=v],["gfType",v=>gType=v],["gfXp",v=>gXp=Number(v)],["gfLimit",v=>gLimit=v],["gfWhen",v=>gWhen=v]].forEach(([id,set])=>{
+    $(id).onclick=e=>{ const b=e.target.closest("button"); if(!b) return; set(b.dataset.v); syncGift(); }; });
+  $("gfEmojiPick").onclick=e=>{ const b=e.target.closest("button"); if(b) $("gfEmoji").value=b.textContent; };
+  $("gfCancel").onclick=()=>$("gfModal").classList.remove("open");
+  $("gfForm").addEventListener("submit",async e=>{
+    e.preventDefault();
+    const name=$("gfName").value.trim(); if (!name){ toast("이름을 넣어주세요"); return; }
+    let data;
+    if (gKind==="quest"){ data={title:name.slice(0,80), xp:gXp, type:gType}; if (gType==="once") data.date=$("gfDate").value||todayKey(); if (gWhen) data.when=gWhen; }
+    else { const cost=Math.round(Number($("gfCost").value)); if(!(cost>=1&&cost<=99999)){ toast("가격은 1~99999P 사이로 넣어주세요"); return; }
+      data={name:name.slice(0,30), cost, emoji:$("gfEmoji").value.trim().slice(0,4), limit:gLimit}; if (gLimit==="week"||gLimit==="month") data.limitN=clampI($("gfLimitN").value,1,99,1); }
+    try{
+      await FB.fs.collection("groups").doc(gTo.gid).collection("gifts").add({to:gTo.uid, toNick:gTo.nick, from:S.uid, fromNick:myNick()||"모험가", kind:gKind, data,
+        msg:$("gfMsg").value.trim().slice(0,60), status:"pending", created:firebase.firestore.FieldValue.serverTimestamp()});
+      $("gfModal").classList.remove("open"); toast("🎁 "+gTo.nick+"님에게 보냈어요 · 수락하면 추가돼요");
+    }catch(err){ console.warn(err); toast("보내지 못했어요 (파티 권한 확인)"); }
+  });
 })();
 </script>
 </body>
