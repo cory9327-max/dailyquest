@@ -212,6 +212,13 @@
 
   #gcalCard{display:none!important}
   #viewParty{margin-top:16px}
+  #partyToday{margin-top:12px}
+  .quest.pq{border-left-color:#b48cff}
+  .prow.clickable{cursor:pointer}
+  .pshare{font-size:14px;color:var(--purple);flex:none}
+  .mshare{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:2px 0 6px 38px;font-size:13px}
+  .msq{padding:3px 0;color:var(--text)}
+  .msq.on{color:var(--dim);text-decoration:line-through}
   .auth{position:fixed;inset:0;z-index:90;background:radial-gradient(900px 500px at 50% -120px,#33285e 0%,transparent 70%),var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto}
   .authbox{width:100%;max-width:380px;text-align:center}
   .authbox .logo{font-size:56px;line-height:1}
@@ -454,6 +461,7 @@
 
   <div class="filterbar hidden" id="catFilter"></div>
   <div class="list" id="list"></div>
+  <div id="partyToday"></div>
   <div class="others" id="otherQuests"></div>
 
   </div>
@@ -497,7 +505,7 @@
   <div id="viewParty" class="hidden">
     <div class="card" style="margin-top:0">
       <div class="evhead" style="margin:0 0 6px"><span>👥 파티</span><button type="button" class="btn" id="partyCreate" style="padding:7px 12px;font-size:13px">+ 파티 만들기</button></div>
-      <p class="hint" style="margin:0 0 10px">친구·팀원과 파티를 만들면 서로의 레벨, 포인트, 오늘 진행, 연속 일수를 볼 수 있어요. 퀘스트 내용은 공개되지 않아요.</p>
+      <p class="hint" style="margin:0 0 10px">친구·팀원과 파티를 만들면 서로의 레벨, 포인트, 오늘 진행, 연속 일수를 볼 수 있어요. 퀘스트 내용은 '내 오늘 퀘스트 공개'를 켠 경우에만 보여요. 파티 퀘스트는 누구나 만들고 함께 할 수 있어요.</p>
       <div class="joinrow"><input id="joinCode" maxlength="6" placeholder="초대 코드" autocomplete="off"><button type="button" class="btn" id="partyJoin" style="padding:0 16px">참가</button></div>
       <div class="hint" id="partyMsg"></div>
     </div>
@@ -873,6 +881,27 @@
       <button type="button" class="btn" id="buyYes">구매</button>
     </div>
   </div>
+</div>
+
+<!-- party quest -->
+<div class="modal-bg" id="pqModal">
+  <form class="modal" id="pqForm">
+    <h2 id="pqTitleH">새 파티 퀘스트</h2>
+    <div class="field"><label>퀘스트 이름</label>
+      <input type="text" id="pqTitle" maxlength="60" placeholder="예: 물 2L 마시기" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 12px;outline:none" required></div>
+    <div class="field"><label>점수 (체크할 때마다 각자 받는 점수)</label>
+      <div class="seg" id="pqXp"><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button><button type="button" data-v="5">5</button></div></div>
+    <div class="field"><label>주기</label>
+      <div class="seg" id="pqPer"><button type="button" data-v="day">매일</button><button type="button" data-v="week">매주</button><button type="button" data-v="month">매월</button><button type="button" data-v="once">한 번</button></div></div>
+    <div class="field"><label>방식</label>
+      <div class="seg" id="pqMode"><button type="button" data-v="each">👤 각자 완료</button><button type="button" data-v="together">🤝 함께 목표</button></div>
+      <div class="hint" id="pqHint"></div></div>
+    <div class="field hidden" id="pqTogether">
+      <div class="sentence"><span>다 같이</span><input type="number" id="pqTarget" min="1" max="999" inputmode="numeric" value="10"><span>회 채우면, 참여한 사람 모두 +</span><input type="number" id="pqBonus" min="0" max="99" inputmode="numeric" value="5"><span>P</span></div></div>
+    <div class="hint" id="pqBy"></div>
+    <button type="button" class="btn ghost hidden" id="pqCopy" style="width:100%;padding:10px;margin-top:8px">📋 내 퀘스트로 복사</button>
+    <div class="actions"><button type="button" class="btn danger hidden" id="pqDelete">삭제</button><button type="button" class="btn ghost" id="pqCancel">취소</button><button type="submit" class="btn">저장</button></div>
+  </form>
 </div>
 
 <!-- login -->
@@ -1273,7 +1302,7 @@
       q.doneKey = doneMap[id] ? k : doneKeyFor(q,k);
       out.push(q);
     }
-    for (const id in doneMap) if (!S.quests.has(id) && !doneMap[id].ev && !S.events.has(id))
+    for (const id in doneMap) if (!S.quests.has(id) && !doneMap[id].ev && !doneMap[id].pq && !S.events.has(id))
       out.push({id, type:"gone", title:doneMap[id].title||"(삭제된 퀘스트)", xp:doneMap[id].xp, cat:doneMap[id].cat, doneKey:k});
     out.sort((a,b)=> (TYPE_RANK[kindOf(a)]-TYPE_RANK[kindOf(b)]) || (timeKey(a)<timeKey(b)?-1:timeKey(a)>timeKey(b)?1:0) || ((a.created||0)-(b.created||0)));
     return out;
@@ -1412,6 +1441,7 @@
     if (curTab==="shop") renderShop();
     pushWidgetSoon();
     schedulePub();
+    try{ renderPartyToday(); scheduleShare(); }catch(_){}
     if (curTab==="party") { try{ renderParty(); }catch(_){} }
     setTimeout(announceExtras,1500);
     if (curTab==="cal" && $("importG2")) $("importG2").classList.toggle("hidden",!MCP);
@@ -3113,7 +3143,7 @@
   function startParty(db, uid){
     P.gsub = db.collection("groups").where("members","array-contains",uid).onSnapshot(s=>{
       P.groups = new Map(s.docs.map(d=>[d.id, d.data()]));
-      subscribeMembers(); renderParty();
+      subscribeMembers(); syncPartySubs(); renderParty(); scheduleShare();
     }, e=>{ console.warn("groups",e); $("partyMsg").textContent="파티 정보를 불러오지 못했어요 (보안 규칙 확인)"; });
   }
   function subscribeMembers(){
@@ -3165,7 +3195,15 @@
         w.append(n,s);
         const sc=document.createElement("span"); sc.className="psc"; sc.textContent=r.score+"P";
         el.append(rk,w,sc); card.appendChild(el);
+        const shared=(PQ.shares.get(gid)||new Map()).get(r.id);
+        if (shared && shared.date===tk){
+          const key=gid+"|"+r.id; el.classList.add("clickable");
+          const ic=document.createElement("span"); ic.className="pshare"; ic.textContent=PQ.open.has(key)?"▾":"📋"; ic.title="공개한 오늘 퀘스트 보기"; el.insertBefore(ic, sc);
+          el.onclick=()=>{ PQ.open.has(key)?PQ.open.delete(key):PQ.open.add(key); renderParty(); };
+          if (PQ.open.has(key)){ const blk=memberShareBlock(gid,r.id); if (blk) card.appendChild(blk); }
+        }
       });
+      partyCardExtras(card,gid,g);
       box.appendChild(card);
     });
   }
@@ -3210,6 +3248,234 @@
     try{ await FB.fs.collection("groups").doc(gmTarget.gid).update({members: firebase.firestore.FieldValue.arrayRemove(S.uid)}); $("gmModal").classList.remove("open"); toast("파티에서 나왔어요"); }catch(_){ toast("나가지 못했어요"); } };
   $("gmDelete").onclick=async()=>{ const b=$("gmDelete"); if (b.textContent!=="정말 없애기"){ b.textContent="정말 없애기"; return; }
     try{ await FB.fs.collection("groups").doc(gmTarget.gid).delete(); $("gmModal").classList.remove("open"); toast("파티를 없앴어요"); }catch(_){ toast("없애지 못했어요"); } };
+  // ---------- party: shared quests, party quests, co-op goals ----------
+  // groups/{gid}/share/{uid}        my today's quest list (only if I opt in for that party)
+  // groups/{gid}/quests/{qid}       party quest {title,xp,per:"day"|"week"|"month"|"once",mode:"each"|"together",target,bonus,createdBy,nick}
+  // groups/{gid}/quests/{qid}/log/{day_uid}   one check by one member on one day {uid,nick,day}
+  const PQ = { quests:new Map(), logs:new Map(), shares:new Map(), subs:new Map(), open:new Set() };   // keys: gid / gid|qid
+  const PER_LABEL = { day:"매일", week:"매주", month:"매월", once:"한 번" };
+
+  function pqPk(per,k){ return per==="day" ? k : per==="week" ? weekStart(k) : per==="month" ? k.slice(0,7)+"-01" : "once"; }
+  function pqInPeriod(per,day,k){ return pqPk(per,day)===pqPk(per,k); }
+  function shareOn(gid){ return !!(S.settings.share && S.settings.share[gid]); }
+
+  // subscribe to each party's quests, logs and shares; called whenever my parties change
+  function syncPartySubs(){
+    const want=new Set();
+    for (const gid of P.groups.keys()){
+      want.add("q:"+gid); want.add("s:"+gid);
+      if (!PQ.subs.has("q:"+gid)){
+        PQ.subs.set("q:"+gid, FB.fs.collection("groups").doc(gid).collection("quests").onSnapshot(s=>{
+          PQ.quests.set(gid, new Map(s.docs.map(d=>[d.id,d.data()]))); syncLogSubs(); dirty(); render(); renderParty();
+        }, e=>console.warn("pq",e)));
+      }
+      if (!PQ.subs.has("s:"+gid)){
+        PQ.subs.set("s:"+gid, FB.fs.collection("groups").doc(gid).collection("share").onSnapshot(s=>{
+          PQ.shares.set(gid, new Map(s.docs.map(d=>[d.id,d.data()]))); renderParty();
+        }, e=>console.warn("share",e)));
+      }
+    }
+    for (const [key,un] of PQ.subs){ const gid=key.split(":")[1].split("|")[0]; if (!P.groups.has(gid)){ un(); PQ.subs.delete(key); PQ.quests.delete(gid); PQ.shares.delete(gid); } }
+    syncLogSubs();
+  }
+  function syncLogSubs(){
+    const tk=todayKey(), since=[weekStart(tk), tk.slice(0,7)+"-01"].sort()[0];
+    for (const [gid,qs] of PQ.quests){
+      for (const [qid,q] of qs){
+        const key="l:"+gid+"|"+qid; if (PQ.subs.has(key)) continue;
+        let ref=FB.fs.collection("groups").doc(gid).collection("quests").doc(qid).collection("log");
+        if (q.per!=="once") ref=ref.where("day",">=",since);
+        PQ.subs.set(key, ref.onSnapshot(s=>{ PQ.logs.set(gid+"|"+qid, s.docs.map(d=>d.data())); render(); renderParty(); checkTeamBonus(); }, e=>console.warn("log",e)));
+      }
+    }
+    for (const [key,un] of PQ.subs){ if (!key.startsWith("l:")) continue; const [gid,qid]=key.slice(2).split("|");
+      if (!PQ.quests.has(gid) || !PQ.quests.get(gid).has(qid)){ un(); PQ.subs.delete(key); PQ.logs.delete(gid+"|"+qid); } }
+  }
+
+  function pqState(gid,qid,q){
+    const tk=todayKey(), logs=(PQ.logs.get(gid+"|"+qid)||[]);
+    const inPer=logs.filter(l=>pqInPeriod(q.per,l.day,tk));
+    const mineToday=logs.some(l=>l.uid===S.uid && l.day===tk);
+    const minePer=inPer.some(l=>l.uid===S.uid);
+    const done = q.mode==="together" ? mineToday : minePer;
+    const canCheck = q.mode==="together" ? true : (!minePer || mineToday);   // "each": once per period
+    const count=inPer.length, target=Math.max(1,Number(q.target)||1);
+    const who=[...new Map(inPer.map(l=>[l.uid,l.nick||"?"])).values()];
+    return {done, canCheck, count, target, reached: q.mode==="together" && count>=target, who, mineToday};
+  }
+  function myPartyQuests(){
+    const out=[];
+    for (const [gid,qs] of PQ.quests){ const g=P.groups.get(gid); if (!g) continue;
+      for (const [qid,q] of qs) out.push({gid,qid,q,g}); }
+    return out.sort((a,b)=>(a.g.name<b.g.name?-1:1) || ((a.q.created&&a.q.created.seconds||0)-(b.q.created&&b.q.created.seconds||0)));
+  }
+
+  async function togglePQ(gid,qid,q,evt){
+    const tk=todayKey(), st=pqState(gid,qid,q), id="pq_"+gid+"_"+qid;
+    const ref=FB.fs.collection("groups").doc(gid).collection("quests").doc(qid).collection("log").doc(tk+"_"+S.uid);
+    const done={...((S.days.get(tk)||{}).done||{})};
+    if (st.mineToday){
+      try{ await ref.delete(); }catch(e){ toast("취소하지 못했어요"); return; }
+      delete done[id]; setDone(tk,done); render(); writeDay(tk); return;
+    }
+    if (!st.canCheck){ toast("이번 "+(q.per==="week"?"주":q.per==="month"?"달":"기간")+"에는 이미 완료했어요"); return; }
+    const p=Math.max(1,Math.min(5,Number(q.xp)||3));
+    try{ await ref.set({uid:S.uid, nick:myNick()||"모험가", day:tk}); }catch(e){ console.warn(e); toast("체크하지 못했어요 (파티 권한 확인)"); return; }
+    done[id]={xp:p, base:p, bonus:0, t:Date.now(), title:"👥 "+q.title, pq:true};
+    setDone(tk,done); render(); writeDay(tk);
+    const r0=(evt.currentTarget||evt.target).getBoundingClientRect(); floatXp(r0.left+r0.width/2, r0.top, "+"+p+" P");
+  }
+  // co-op goal reached → everyone who helped gets the bonus once per period (stored in their own record)
+  let tbTimer=null;
+  function checkTeamBonus(){ clearTimeout(tbTimer); tbTimer=setTimeout(()=>{
+    if (!S.loaded) return;
+    const tk=todayKey();
+    for (const {gid,qid,q} of myPartyQuests()){
+      if (q.mode!=="together" || !(Number(q.bonus)>0)) continue;
+      const st=pqState(gid,qid,q); if (!st.reached) continue;
+      const logs=(PQ.logs.get(gid+"|"+qid)||[]).filter(l=>pqInPeriod(q.per,l.day,tk));
+      if (!logs.some(l=>l.uid===S.uid)) continue;
+      const bid="pqb_"+gid+"_"+qid+"_"+pqPk(q.per,tk);
+      let have=false; for (const [k,d] of S.days){ if (d.done && d.done[bid]) { have=true; break; } }
+      if (have) continue;
+      const done={...((S.days.get(tk)||{}).done||{})};
+      done[bid]={xp:Number(q.bonus), base:Number(q.bonus), bonus:0, t:Date.now(), title:"🤝 "+q.title+" 공동 목표 달성", pq:true};
+      setDone(tk,done); render(); writeDay(tk);
+      banner("🤝 공동 목표 달성!", q.title+" · +"+q.bonus+"P");
+    }
+  },800); }
+
+  function pqRow(gid,qid,q,showParty){
+    const st=pqState(gid,qid,q), p=Math.max(1,Math.min(5,Number(q.xp)||3));
+    const el=document.createElement("div"); el.className="quest pq"+(st.done?" done":""); el.style.setProperty("--c","#b48cff");
+    const chk=document.createElement("button"); chk.className="check"; chk.setAttribute("aria-label","완료 체크");
+    chk.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="#14121f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+    chk.onclick=e=>{ e.stopPropagation(); togglePQ(gid,qid,q,e); };
+    const body=document.createElement("div"); body.className="qbody";
+    const t=document.createElement("div"); t.className="qt"; t.textContent=q.title;
+    const m=document.createElement("div"); m.className="qm";
+    if (showParty){ const g=P.groups.get(gid); const s=document.createElement("span"); s.className="tag"; s.style.color="#d4c0ff"; s.style.background="rgba(180,140,255,.15)"; s.textContent="👥 "+(g?g.name:""); m.appendChild(s); }
+    const per=document.createElement("span"); per.textContent="🔁 "+PER_LABEL[q.per||"day"]+(q.mode==="together"?" · 함께":" · 각자"); m.appendChild(per);
+    if (q.mode==="together"){
+      const pr=document.createElement("span"); pr.className="tag freq"+(st.reached?" ok":""); pr.textContent="🤝 "+st.count+"/"+st.target+"회"+(st.reached?" ✓":""); m.appendChild(pr);
+      if (Number(q.bonus)>0 && !st.reached){ const b=document.createElement("span"); b.className="tag hold"; b.textContent="달성 시 +"+q.bonus+"P"; m.appendChild(b); }
+    }
+    if (st.who.length){ const w=document.createElement("span"); w.textContent="✔ "+st.who.slice(0,4).join(", ")+(st.who.length>4?" 외 "+(st.who.length-4)+"명":""); m.appendChild(w); }
+    body.append(t,m);
+    if (q.mode==="together"){ const bar=document.createElement("div"); bar.className="sbar"; const i=document.createElement("i"); i.style.width=Math.min(100,st.count/st.target*100)+"%"; i.style.background=st.reached?"var(--green)":"#b48cff"; bar.appendChild(i); body.appendChild(bar); }
+    body.onclick=e=>togglePQ(gid,qid,q,e);
+    const xp=document.createElement("div"); xp.className="xp"; xp.textContent="+"+p+"P";
+    const mo=document.createElement("button"); mo.className="more"; mo.textContent="⋯"; mo.setAttribute("aria-label","파티 퀘스트 메뉴"); mo.onclick=e=>{ e.stopPropagation(); openPQ(gid,qid); };
+    el.append(chk,body,xp,mo);
+    return el;
+  }
+
+  // quests tab: today's party quests
+  function renderPartyToday(){
+    const box=$("partyToday"); if (!box) return; box.innerHTML="";
+    if (S.view!==todayKey()) return;
+    const list=myPartyQuests().filter(x=>{ const st=pqState(x.gid,x.qid,x.q); return x.q.per!=="once" || !st.done || st.mineToday; });
+    if (!list.length) return;
+    const h=document.createElement("div"); h.className="group-label"; h.textContent="👥 파티 퀘스트";
+    const sm=document.createElement("small"); sm.textContent=list.filter(x=>pqState(x.gid,x.qid,x.q).done).length+"/"+list.length+" 완료"; h.appendChild(sm);
+    box.appendChild(h);
+    const wrap=document.createElement("div"); wrap.className="list";
+    list.forEach(x=>wrap.appendChild(pqRow(x.gid,x.qid,x.q,true)));
+    box.appendChild(wrap);
+  }
+
+  // my opt-in share of today's quests
+  let shTimer=null, shLast={};
+  function scheduleShare(){ if (!S.db || !S.loaded || !FB.user) return; clearTimeout(shTimer); shTimer=setTimeout(writeShares,2500); }
+  function writeShares(){
+    const tk=todayKey();
+    const quests=questsFor(tk).filter(q=>q.type!=="gone").map(q=>{ const o={t:q.title, done:!!q.doneKey, p:pts(q)}; const c=catOf(q.cat); if (c) o.cat=c.name;
+      const req=reqSteps(q,tk); if (req.length){ const set=stepDone(q,tk); o.steps=req.filter(s=>set.has(s.id)).length+"/"+req.length; } return o; });
+    for (const gid of P.groups.keys()){
+      const ref=FB.fs.collection("groups").doc(gid).collection("share").doc(S.uid);
+      if (!shareOn(gid)){ if (shLast[gid]!=="off"){ shLast[gid]="off"; ref.delete().catch(()=>{}); } continue; }
+      const body={nick:myNick()||"모험가", date:tk, quests:quests.slice(0,30)};
+      const key=JSON.stringify(body); if (shLast[gid]===key) continue; shLast[gid]=key;
+      ref.set({...body, updated:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("share",e));
+    }
+  }
+
+  // party card extras: share toggle, party quest list, member's shared quests
+  function partyCardExtras(card,gid,g){
+    const sh=document.createElement("label"); sh.className="gsync"; sh.style.margin="10px 0 0";
+    const cb=document.createElement("input"); cb.type="checkbox"; cb.checked=shareOn(gid);
+    cb.onchange=()=>{ const s={...(S.settings.share||{})}; if (cb.checked) s[gid]=true; else delete s[gid]; saveSettings({share:s}); shLast[gid]=null; scheduleShare();
+      toast(cb.checked?"이 파티에 오늘 퀘스트를 공개해요":"공개를 껐어요"); };
+    const sp=document.createElement("span"); sp.innerHTML="<b>내 오늘 퀘스트 공개</b><small>켜면 이 파티 사람들이 내 오늘 퀘스트 이름과 완료 여부를 볼 수 있어요. 일정·상점은 공개되지 않아요.</small>";
+    sh.append(cb,sp); card.appendChild(sh);
+
+    const qh=document.createElement("div"); qh.className="evhead"; qh.style.margin="14px 0 6px";
+    const qt=document.createElement("span"); qt.textContent="🤝 파티 퀘스트"; qt.style.fontSize="16px";
+    const add=document.createElement("button"); add.type="button"; add.className="linkbtn"; add.textContent="+ 만들기"; add.onclick=()=>openPQ(gid,null);
+    qh.append(qt,add); card.appendChild(qh);
+    const qs=PQ.quests.get(gid);
+    if (!qs || !qs.size){ const e=document.createElement("div"); e.className="hint"; e.style.margin="0 0 4px"; e.textContent="아직 파티 퀘스트가 없어요. 누구나 만들 수 있어요. (예: 매일 물 2L — 각자 / 이번 주 다 같이 운동 20회 — 함께)"; card.appendChild(e); }
+    else { const w=document.createElement("div"); w.className="list"; [...qs.entries()].forEach(([qid,q])=>w.appendChild(pqRow(gid,qid,q,false))); card.appendChild(w); }
+  }
+  function memberShareBlock(gid,uid){
+    const s=(PQ.shares.get(gid)||new Map()).get(uid);
+    if (!s || s.date!==todayKey()) return null;
+    const w=document.createElement("div"); w.className="mshare";
+    if (!(s.quests||[]).length){ w.textContent="오늘 퀘스트가 없어요"; return w; }
+    s.quests.forEach(q=>{ const r=document.createElement("div"); r.className="msq"+(q.done?" on":"");
+      r.textContent=(q.done?"✅ ":"⬜ ")+q.t+(q.steps&&!q.done?" ("+q.steps+")":"")+(q.cat?" · "+q.cat:""); w.appendChild(r); });
+    return w;
+  }
+
+  // party quest editor
+  let pqEdit=null, pqMode="each", pqPer="day", pqXp=3;
+  function syncPQ(){
+    [...$("pqPer").children].forEach(b=>b.classList.toggle("on",b.dataset.v===pqPer));
+    [...$("pqMode").children].forEach(b=>b.classList.toggle("on",b.dataset.v===pqMode));
+    [...$("pqXp").children].forEach(b=>b.classList.toggle("on",Number(b.dataset.v)===pqXp));
+    $("pqTogether").classList.toggle("hidden",pqMode!=="together");
+    const pl=pqPer==="day"?"하루":pqPer==="week"?"한 주":pqPer==="month"?"한 달":"전체 기간";
+    $("pqHint").textContent = pqMode==="each" ? "파티원 각자 "+pl+"에 한 번씩 완료하고, 할 때마다 각자 점수를 받아요."
+      : "파티원 모두가 "+pl+" 동안 합쳐서 목표 횟수를 채워요. 한 사람은 하루 한 번 체크할 수 있고, 목표를 채우면 참여한 사람 모두 보너스를 받아요.";
+  }
+  ["pqPer","pqMode","pqXp"].forEach(id=>$(id).onclick=e=>{ const b=e.target.closest("button"); if(!b) return;
+    if (id==="pqPer") pqPer=b.dataset.v; else if (id==="pqMode") pqMode=b.dataset.v; else pqXp=Number(b.dataset.v); syncPQ(); });
+  function openPQ(gid,qid){
+    const q=qid ? (PQ.quests.get(gid)||new Map()).get(qid) : null; pqEdit={gid,qid};
+    const g=P.groups.get(gid);
+    $("pqTitleH").textContent = (q?"파티 퀘스트 수정":"새 파티 퀘스트")+" · "+(g?g.name:"");
+    $("pqTitle").value=q?q.title:""; pqPer=q?q.per||"day":"day"; pqMode=q?q.mode||"each":"each"; pqXp=q?Number(q.xp)||3:3;
+    $("pqTarget").value=q&&q.target?q.target:10; $("pqBonus").value=q&&q.bonus?q.bonus:5;
+    $("pqBy").textContent = q ? "만든 사람: "+(q.nick||"?") : "";
+    const canDel = q && (q.createdBy===S.uid || (g && g.owner===S.uid));
+    $("pqDelete").classList.toggle("hidden",!canDel); $("pqDelete").textContent="삭제";
+    $("pqCopy").classList.toggle("hidden",!q);
+    syncPQ(); $("pqModal").classList.add("open"); if(!q) setTimeout(()=>$("pqTitle").focus(),50);
+  }
+  $("pqCancel").onclick=()=>$("pqModal").classList.remove("open");
+  $("pqForm").addEventListener("submit",async e=>{
+    e.preventDefault();
+    const title=$("pqTitle").value.trim().slice(0,60); if(!title){ toast("퀘스트 이름을 넣어주세요"); return; }
+    const data={title, xp:pqXp, per:pqPer, mode:pqMode};
+    if (pqMode==="together"){ const t=Math.round(Number($("pqTarget").value)), b=Math.round(Number($("pqBonus").value))||0;
+      if (!(t>=1 && t<=999)){ toast("목표 횟수는 1~999 사이로 넣어주세요"); return; } data.target=t; data.bonus=Math.max(0,Math.min(99,b)); }
+    else { data.target=0; data.bonus=0; }
+    const col=FB.fs.collection("groups").doc(pqEdit.gid).collection("quests");
+    try{
+      if (pqEdit.qid) await col.doc(pqEdit.qid).update(data);
+      else await col.add({...data, createdBy:S.uid, nick:myNick()||"모험가", created:firebase.firestore.FieldValue.serverTimestamp()});
+      $("pqModal").classList.remove("open"); toast(pqEdit.qid?"파티 퀘스트를 고쳤어요":"🤝 파티 퀘스트를 만들었어요");
+    }catch(err){ console.warn(err); toast("저장하지 못했어요 (파티 권한 확인)"); }
+  });
+  $("pqDelete").onclick=async()=>{ const b=$("pqDelete"); if (b.textContent!=="정말 삭제"){ b.textContent="정말 삭제"; return; }
+    try{ await FB.fs.collection("groups").doc(pqEdit.gid).collection("quests").doc(pqEdit.qid).delete(); $("pqModal").classList.remove("open"); toast("파티 퀘스트를 삭제했어요"); }catch(_){ toast("삭제하지 못했어요"); } };
+  $("pqCopy").onclick=()=>{
+    const q=(PQ.quests.get(pqEdit.gid)||new Map()).get(pqEdit.qid); if(!q) return;
+    const d={title:q.title, xp:Math.max(1,Math.min(5,Number(q.xp)||3)), start:todayKey(), created:Date.now()};
+    if (q.per==="week"){ d.type="weekly"; d.anyDay=true; } else if (q.per==="month"){ d.type="monthly"; d.anyDay=true; } else if (q.per==="once"){ d.type="once"; d.date=todayKey(); } else d.type="daily";
+    saveQuest("q"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), d);
+    $("pqModal").classList.remove("open"); toast("내 퀘스트로 복사했어요");
+  };
 })();
 </script>
 </body>
