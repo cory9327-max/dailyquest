@@ -747,6 +747,7 @@
       </div>
       <div class="timerow" style="margin-top:8px"><input type="time" id="fTime" class="hidden" value="19:00"></div>
     </div>
+    <div class="field hidden" id="fPartyHide"></div>
     <div class="actions">
       <button type="button" class="btn danger hidden" id="fDelete">삭제</button>
       <button type="button" class="btn ghost" id="fCancel">취소</button>
@@ -827,6 +828,7 @@
       <input type="text" id="eMemo" maxlength="200" placeholder="장소, 준비물 등">
     </div>
     <label class="gsync hidden" id="eGsyncRow"><input type="checkbox" id="eGsync"><span><b>Google 캘린더에도 저장</b><small id="eGsyncNote"></small></span></label>
+    <div class="field hidden" id="ePartyHide"></div>
     <a class="gcal hidden" id="eGcal" target="_blank" rel="noopener">🔔 휴대폰 알림 받기 · Google 캘린더에 추가</a>
     <button type="button" class="btn ghost hidden" id="eSkip" style="width:100%;padding:11px;margin-bottom:10px">이 날만 빼기</button>
     <div class="actions">
@@ -1522,6 +1524,7 @@
     const st=document.createElement("span"); st.className="tag"; st.style.color=color(p); st.textContent=STARS[p]; m.appendChild(st);
     const ty=document.createElement("span"); ty.textContent=scheduleText(q); m.appendChild(ty);
     if (q.from){ const gf=document.createElement("span"); gf.className="tag gift"; gf.textContent="🎁 "+q.from; m.appendChild(gf); }
+    if (Array.isArray(q.hideIn) && q.hideIn.length){ const hz=document.createElement("span"); hz.className="tag"; hz.textContent="🙈 "+q.hideIn.length+"개 파티 비공개"; m.appendChild(hz); }
     const fq=q.type!=="gone" ? freqOf(q) : null;
     if (fq){
       const c=freqCount(q,k), n=Number(fq.n), ok=c>=n;
@@ -2139,6 +2142,7 @@
     syncFreq();
     renderStepEditor();
     syncSeg();
+    if (typeof partyHideRender==="function") partyHideRender("q", q);
     $("qModal").classList.add("open");
     if (!q) setTimeout(()=>$("fTitle").focus(),50);
   }
@@ -2190,6 +2194,7 @@
       if (fType==="weekly"){ if (fMode==="any") data.anyDay=true; else data.days=fDays; }
       if (fType==="monthly"){ if (fMode==="any") data.anyDay=true; else data.mday=mday; }
     }
+    if (typeof partyHideApply==="function") partyHideApply("q", data);
     saveQuest(editing||newId(), data);
     if (!appears(data, S.view)){
       const nx=nextOccurrence(data, S.view);
@@ -2259,6 +2264,7 @@
     if (e.time && e.end){ const sp=document.createElement("span"); const a=ampm(e.time), z=ampm(e.end); sp.textContent=a.ap+" "+a.t+" ~ "+(a.ap===z.ap?"":z.ap+" ")+z.t; m.appendChild(sp); }
     if (c){ const ct=document.createElement("span"); ct.className="tag"; ct.style.color=c.color; ct.style.background=c.color+"22"; ct.textContent=c.name; m.appendChild(ct); }
     if (e.memo){ const mm=document.createElement("span"); mm.textContent="📝 "+e.memo; m.appendChild(mm); }
+    { const se=S.events.get(e.id); if (se && Array.isArray(se.hideIn) && se.hideIn.length){ const hz=document.createElement("span"); hz.textContent="🙈"; hz.title=se.hideIn.length+"개 파티 비공개"; m.appendChild(hz); } }
     b.append(t); if (m.childNodes.length) b.append(m);
     el.append(tm,b);
     if (ep>0){
@@ -2453,7 +2459,7 @@
     $("eGsync").checked = ser ? !!(ser.gcal||ser.gid) : !!S.settings.gcalDefault;
     $("eGsyncNote").textContent = ser && ser.gid ? "Google 캘린더와 연동된 일정이에요. 수정·삭제하면 Google 쪽도 바뀌어요." : ser && ser.gcal ? "아직 Google 캘린더로 보내지 못했어요. 저장하면 다시 보내요." : "저장하면 Google 캘린더에도 만들어져요.";
     $("eModalTitle").textContent = ev ? (eRep!=="none" ? "반복 일정 수정" : "일정 수정") : "새 일정"; $("eDelete").textContent="삭제"; $("eDelete").classList.remove("arm");
-    syncEv(); $("eModal").classList.add("open");
+    syncEv(); if (typeof partyHideRender==="function") partyHideRender("e", ev ? S.events.get(ev.id) : null); $("eModal").classList.add("open");
     if (!ev) setTimeout(()=>$("eTitle").focus(),50);
   }
   function closeEv(){ $("eModal").classList.remove("open"); }
@@ -2496,6 +2502,7 @@
     if (wantG) data.gcal=true;
     if (prev && prev.gid) data.gid=prev.gid;
     const id = eEditing || ("e"+Date.now().toString(36)+Math.random().toString(36).slice(2,6));
+    if (typeof partyHideApply==="function") partyHideApply("e", data);
     saveEvent(id, data);
     closeEv();
     if (wantG){
@@ -3458,10 +3465,10 @@
   // my opt-in share: the whole quest list (with schedules and today's state) and all upcoming events
   let shTimer=null, shLast={};
   function scheduleShare(){ if (!S.db || !S.loaded || !FB.user) return; clearTimeout(shTimer); shTimer=setTimeout(writeShares,2500); }
-  function shareQuestList(){
+  function shareQuestList(gid){
     const tk=todayKey(), todays=new Map(questsFor(tk).map(q=>[q.id,q]));
     return [...S.quests.entries()].map(([id,q0])=>({id,...q0}))
-      .filter(q=> !(kindOf(q)==="once" && q.date<tk))
+      .filter(q=> !(kindOf(q)==="once" && q.date<tk) && !hiddenIn(q,gid))
       .map(q=>{
         const o={t:q.title, p:pts(q), sched:scheduleText(q)}; const c=catOf(q.cat); if (c) o.cat=c.name;
         if (q.time) o.when=ampm(q.time).ap+" "+ampm(q.time).t; else if (q.when && WHEN[q.when]) o.when=WHEN[q.when][0];
@@ -3473,9 +3480,10 @@
       .sort((a,b)=>(b.today?1:0)-(a.today?1:0) || ((a.next||"")<(b.next||"")?-1:1))
       .slice(0,60);
   }
-  function shareEventList(){
+  function shareEventList(gid){
     const tk=todayKey(), out=[];
     for (const [id,e] of S.events){
+      if (hiddenIn(e,gid)) continue;
       const rep=e.repeat && e.repeat!=="none";
       if (!rep){ if (e.date>=tk) out.push(evOut(e,e.date)); continue; }
       // repeating: the next 60 days of occurrences
@@ -3485,14 +3493,14 @@
   }
   function evOut(e,k){ const o={t:e.title, date:k}; if (e.time) o.time=e.time; if (e.end) o.end=e.end; const c=catOf(e.cat); if (c) o.cat=c.name; return o; }
   function writeShares(){
-    const tk=todayKey(); let ql=null, el=null;
+    const tk=todayKey();
     for (const gid of P.groups.keys()){
       const ref=FB.fs.collection("groups").doc(gid).collection("share").doc(S.uid);
       const cfg=shareCfg(gid);
       if (!cfg || (!cfg.q && !cfg.e)){ if (shLast[gid]!=="off"){ shLast[gid]="off"; ref.delete().catch(()=>{}); } continue; }
       const body={v:2, nick:myNick()||"모험가", date:tk, q:cfg.q, e:cfg.e, qlist:[], events:[]};
-      if (cfg.q) body.qlist = ql || (ql=shareQuestList());
-      if (cfg.e) body.events = el || (el=shareEventList());
+      if (cfg.q) body.qlist = shareQuestList(gid);
+      if (cfg.e) body.events = shareEventList(gid);
       const key=JSON.stringify(body); if (shLast[gid]===key) continue; shLast[gid]=key;
       ref.set({...body, updated:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn("share",e));
     }
@@ -3642,6 +3650,41 @@
     saveQuest("q"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), d);
     $("pqModal").classList.remove("open"); toast("내 퀘스트로 복사했어요");
   };
+
+  // ---------- per-item, per-party hiding ----------
+  // quest.hideIn / event.hideIn = [gid, …]  → that item is left out of what those parties see
+  const HIDE={q:new Set(), e:new Set()};
+  function partyHideRender(kind, item){
+    const box=$(kind==="q"?"fPartyHide":"ePartyHide"); if (!box) return;
+    HIDE[kind]=new Set((item && item.hideIn) || []);
+    box.innerHTML="";
+    const groups=[...P.groups.entries()];
+    box.classList.toggle("hidden", !groups.length);
+    if (!groups.length) return;
+    const lab=document.createElement("label"); lab.textContent="파티 공개 (파티마다 따로)"; box.appendChild(lab);
+    const chips=document.createElement("div"); chips.className="chips"; box.appendChild(chips);
+    const hint=document.createElement("div"); hint.className="hint"; box.appendChild(hint);
+    const draw=()=>{
+      chips.innerHTML="";
+      groups.forEach(([gid,g])=>{
+        const on=!HIDE[kind].has(gid), cfg=shareCfg(gid), shared=cfg && (kind==="q"?cfg.q:cfg.e);
+        const c=chip((on?"👁 ":"🙈 ")+g.name+(shared?"":" (공개 꺼짐)"), on?"#5fd68a":null, on);
+        if (!on) c.style.textDecoration="line-through";
+        c.onclick=()=>{ HIDE[kind].has(gid)?HIDE[kind].delete(gid):HIDE[kind].add(gid); draw(); };
+        chips.appendChild(c);
+      });
+      const hidden=groups.filter(([gid])=>HIDE[kind].has(gid)).map(([,g])=>g.name);
+      hint.textContent = hidden.length ? "🙈 "+hidden.join(", ")+"에는 이 "+(kind==="q"?"퀘스트":"일정")+"가 보이지 않아요."
+        : "모든 파티에 공개돼요 (그 파티에서 "+(kind==="q"?"퀘스트":"일정")+" 공개를 켠 경우). 파티 이름을 누르면 그 파티에만 숨겨요.";
+    };
+    draw();
+  }
+  function partyHideApply(kind, data){
+    const ids=[...HIDE[kind]].filter(gid=>P.groups.has(gid));
+    if (ids.length) data.hideIn=ids; else delete data.hideIn;
+  }
+  function hiddenIn(item,gid){ return Array.isArray(item.hideIn) && item.hideIn.includes(gid); }
+
   // ---------- gifts: make a quest or a shop item for a party member ----------
   // groups/{gid}/gifts/{id} {to, from, fromNick, toNick, kind:"quest"|"shop", data, msg, status:"pending"|"accepted"|"declined", created}
   const GF = { inbox:new Map(), outbox:new Map() };   // gid -> Map(id -> gift)
