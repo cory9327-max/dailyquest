@@ -8,3 +8,7 @@ window.FIREBASE_CONFIG = {
   messagingSenderId: "961973998259",
   appId: "1:961973998259:web:7b83d51f33e10c681cd6c6"
 };
+
+// Google 캘린더 연동용 OAuth 클라이언트 ID (README 'Google 캘린더 연동' 참고)
+// 예: "1234567890-abcdefg.apps.googleusercontent.com"
+window.GOOGLE_CLIENT_ID = "961973998259-7oqda0sgu957n29m51do6k01ikrkko26.apps.googleusercontent.com";

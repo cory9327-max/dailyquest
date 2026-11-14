@@ -217,7 +217,6 @@
   .tag.freq.ok{background:rgba(95,214,138,.15);color:var(--green)}
   .tag.hold{background:rgba(245,196,81,.14);color:var(--gold2)}
 
-  #gcalCard{display:none!important}
   #viewParty{margin-top:16px}
   #partyToday{margin-top:12px}
   .sharebox{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px}
@@ -431,6 +430,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <div class="wrap">
@@ -571,6 +571,7 @@
     <div class="card" id="gcalCard">
       <div class="evhead" style="margin:0 0 4px"><span>📅 Google 캘린더</span><span class="hint" id="gLinked" style="margin:0"></span></div>
       <div class="hint" id="gStatus" style="margin:0 0 12px"></div>
+      <div style="display:flex;gap:8px;margin-bottom:10px"><button type="button" class="btn" id="gConnect" style="padding:10px 14px">🔗 Google 캘린더 연결</button><button type="button" class="btn ghost hidden" id="gDisconnect" style="padding:10px 14px">연결 끊기</button></div>
       <label class="gsync" style="margin-bottom:10px"><input type="checkbox" id="gDefault"><span><b>새 일정을 Google 캘린더에도 저장</b><small>일정마다 저장 창에서 따로 끄고 켤 수 있어요. 연동된 일정은 앱에서 수정·삭제하면 Google에도 반영돼요.</small></span></label>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" class="btn" id="importG1" style="padding:10px 14px">📥 Google 캘린더에서 가져오기</button>
@@ -1524,7 +1525,7 @@
     if (curTab==="shop") renderShop();
     pushWidgetSoon();
     schedulePub();
-    try{ renderPartyToday(); scheduleShare(); renderGiftInbox(); if (curTab==="cal") renderPartyCal(); }catch(_){}
+    try{ renderPartyToday(); scheduleShare(); renderGiftInbox(); if (curTab==="cal") renderPartyCal(); if (curTab==="settings") renderGconn(); }catch(_){}
     if (curTab==="party") { try{ renderParty(); }catch(_){} }
     setTimeout(announceExtras,1500);
     if (curTab==="cal" && $("importG2")) $("importG2").classList.toggle("hidden",!MCP);
@@ -2542,9 +2543,9 @@
   function GC_ON(){ return !!MCP; }
   function gcErr(e, what){
     const c=e&&e.code;
-    const m = c==="server_not_connected" ? "Google 캘린더 커넥터가 연결돼 있지 않아요. claude.ai 설정 → 커넥터에서 연결해 주세요."
-      : c==="needs_reauth" ? "Google 캘린더 연결이 만료됐어요. claude.ai 설정 → 커넥터에서 다시 연결해 주세요."
-      : (c==="approval_required"||c==="consent_required"||c==="not_in_manifest") ? "Google 캘린더 사용을 허용해야 해요. 다시 시도하면 허용 창이 떠요."
+    const m = c==="server_not_connected" ? "Google 캘린더가 연결돼 있지 않아요. 설정 탭에서 연결해 주세요."
+      : c==="needs_reauth" ? "Google 캘린더 연결 시간이 지났어요. 한 번 더 누르면 다시 연결돼요."
+      : (c==="approval_required"||c==="consent_required"||c==="not_in_manifest") ? "Google 캘린더 창이 닫혔거나 허용하지 않았어요. 다시 누르면 창이 떠요. (팝업 차단을 꺼주세요)"
       : c==="selection_required" ? "Google 캘린더 커넥터가 여러 개예요. 뜨는 창에서 하나를 골라주세요."
       : c==="blocked_by_policy" ? "조직 정책으로 Google 캘린더를 쓸 수 없어요."
       : c==="tool_error" ? "Google 캘린더가 요청을 거절했어요"+(e.message?": "+String(e.message).slice(0,80):"")
@@ -2694,7 +2695,7 @@
     toast("📥 Google 캘린더에서 "+ok+"개 가져왔어요");
   }
   function openImport(){
-    if (!MCP){ toast("Google 캘린더는 claude.ai나 Claude 앱에서 열었을 때만 쓸 수 있어요"); return; }
+    if (!MCP){ toast("먼저 설정 탭에서 Google 캘린더를 연결해 주세요"); return; }
     $("gModal").classList.add("open");
     [...$("gRange").children].forEach(b=>b.classList.toggle("on",Number(b.dataset.v)===gRange));
     loadGoogle();
@@ -2713,7 +2714,7 @@
   }
   $("gPushPending").onclick=pushPending;
   function renderGcalCard(){
-    $("gStatus").textContent = MCP ? "연결 가능 · Google 계정의 기본 캘린더를 써요" : "이 화면에서는 쓸 수 없어요 (claude.ai나 Claude 앱에서 열어주세요)";
+    $("gStatus").textContent = MCP ? "연결 가능 · Google 계정의 기본 캘린더를 써요" : "아직 연결하지 않았어요 · 아래 버튼으로 연결하세요";
     $("gStatus").className = "hint "+(MCP?"okc":"");
     $("gDefault").checked=!!S.settings.gcalDefault; $("gDefault").disabled=!MCP;
     const pend=[...S.events.values()].filter(e=>e.gcal && !e.gid).length;
@@ -3200,6 +3201,7 @@
     let setOk=false;
     S.settingsDoc.onSnapshot(d=>{
       S.settings = d.exists ? {...d.data()} : {};
+      try{ applyGcalSetting(); }catch(_){}
       if (!setOk && !d.metadata.fromCache){ setOk=true;
         if (!S.settings.nick){ if (pendingNick) saveSettings({nick:pendingNick}); else askNick(true); }
       }
@@ -3856,6 +3858,95 @@
       $("gfModal").classList.remove("open"); toast("🎁 "+gTo.nick+"님에게 보냈어요 · 수락하면 추가돼요");
     }catch(err){ console.warn(err); toast("보내지 못했어요 (파티 권한 확인)"); }
   });
+  // ---------- Google Calendar, direct (Google Identity Services + Calendar API) ----------
+  // Drives the same sync/import code the Claude version uses (it calls MCP.callTool(...)).
+  const GCAL = { token:null, exp:0, client:null, waiters:[] };
+  const GAPI = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+  function gcalConfigured(){ return !!window.GOOGLE_CLIENT_ID; }
+  function tokenKey(){ return "dq_gtok_"+(S.uid||""); }
+  try{ const t=JSON.parse(localStorage.getItem("dq_gtok_cache")||"null"); if (t && t.exp>Date.now()) { GCAL.token=t.t; GCAL.exp=t.exp; } }catch(_){}
+  function ensureClient(){
+    if (GCAL.client) return GCAL.client;
+    if (!(window.google && google.accounts && google.accounts.oauth2)) return null;
+    GCAL.client = google.accounts.oauth2.initTokenClient({
+      client_id: window.GOOGLE_CLIENT_ID,
+      scope: "https://www.googleapis.com/auth/calendar.events",
+      callback: (resp)=>{
+        const ws=GCAL.waiters; GCAL.waiters=[];
+        if (resp.error){ ws.forEach(w=>w.reject({code:"approval_required", message:resp.error})); return; }
+        GCAL.token=resp.access_token; GCAL.exp=Date.now()+((Number(resp.expires_in)||3600)-60)*1000;
+        try{ localStorage.setItem("dq_gtok_cache", JSON.stringify({t:GCAL.token, exp:GCAL.exp})); }catch(_){}
+        ws.forEach(w=>w.resolve(GCAL.token));
+      },
+      error_callback: (err)=>{ const ws=GCAL.waiters; GCAL.waiters=[]; ws.forEach(w=>w.reject({code:"approval_required", message:(err&&err.type)||"popup"})); }
+    });
+    return GCAL.client;
+  }
+  // Must start inside a click (the browser only allows the Google window then).
+  function getToken(forceConsent){
+    if (!forceConsent && GCAL.token && Date.now()<GCAL.exp) return Promise.resolve(GCAL.token);
+    const c=ensureClient();
+    if (!c) return Promise.reject({code:"server_unavailable", message:"Google 로그인 모듈을 불러오지 못했어요"});
+    return new Promise((resolve,reject)=>{
+      GCAL.waiters.push({resolve,reject});
+      if (GCAL.waiters.length===1) c.requestAccessToken({prompt: forceConsent ? "consent" : ""});
+    });
+  }
+  function rfc(local){ return new Date(local).toISOString(); }
+  const gcalAdapter = { callTool: async (server, tool, input) => {
+    const token = await getToken(false);
+    let tz="Asia/Seoul"; try{ tz=Intl.DateTimeFormat().resolvedOptions().timeZone||tz; }catch(_){}
+    const ev=(i)=>{ const o={};
+      if (i.summary!==undefined) o.summary=i.summary;
+      if (i.description!==undefined) o.description=i.description;
+      if (i.startTime){ if (i.allDay){ o.start={date:i.startTime.slice(0,10)}; o.end={date:i.endTime.slice(0,10)}; }
+                        else { o.start={dateTime:i.startTime, timeZone:tz}; o.end={dateTime:i.endTime, timeZone:tz}; } }
+      if (i.recurrenceData) o.recurrence=i.recurrenceData;
+      return o; };
+    let url, method="GET", body=null;
+    if (tool==="create_event"){ url=GAPI; method="POST"; body={...ev(input), reminders:{useDefault:true}}; }
+    else if (tool==="update_event"){ url=GAPI+"/"+encodeURIComponent(input.eventId)+"?sendUpdates=none"; method="PATCH"; body=ev(input); }
+    else if (tool==="delete_event"){ url=GAPI+"/"+encodeURIComponent(input.eventId)+"?sendUpdates=none"; method="DELETE"; }
+    else if (tool==="get_event"){ url=GAPI+"/"+encodeURIComponent(input.eventId); }
+    else if (tool==="list_events"){
+      const p=new URLSearchParams({singleEvents:"true", orderBy:"startTime", maxResults:String(input.pageSize||250), timeMin:rfc(input.startTime), timeMax:rfc(input.endTime)});
+      if (input.pageToken) p.set("pageToken", input.pageToken); url=GAPI+"?"+p; }
+    else throw {code:"bad_request", message:tool};
+    let res;
+    try{ res=await fetch(url,{method, headers:{Authorization:"Bearer "+token, ...(body?{"Content-Type":"application/json"}:{})}, body: body?JSON.stringify(body):undefined}); }
+    catch(e){ throw {code:"server_unavailable", message:"network"}; }
+    if (res.status===401){ GCAL.token=null; GCAL.exp=0; throw {code:"needs_reauth", message:"expired"}; }
+    if ((res.status===404||res.status===410) && tool==="delete_event") return {payload:{}};
+    if (!res.ok){ let m=""; try{ m=(await res.json()).error.message; }catch(_){}
+      throw {code: res.status>=500 ? "server_unavailable" : "tool_error", message: m || ("HTTP "+res.status)}; }
+    if (method==="DELETE") return {payload:{}};
+    const j=await res.json();
+    if (tool==="list_events") return {payload:{events:j.items||[], nextPageToken:j.nextPageToken}};
+    return {payload:j};
+  }};
+  function applyGcalSetting(){
+    const want = !!(S.settings.gcalOn && gcalConfigured());
+    if (want && MCP!==gcalAdapter){ MCP=gcalAdapter; render(); }
+    if (!want && MCP===gcalAdapter){ MCP=null; render(); }
+  }
+  function renderGconn(){
+    const on = MCP===gcalAdapter;
+    $("gConnect").classList.toggle("hidden", on);
+    $("gDisconnect").classList.toggle("hidden", !on);
+    if (!gcalConfigured()) $("gStatus").textContent="사이트에 Google 캘린더 설정(GOOGLE_CLIENT_ID)이 아직 없어요. README의 'Google 캘린더 연동' 부분을 확인해 주세요.";
+  }
+  $("gConnect").onclick=async()=>{
+    if (!gcalConfigured()){ toast("사이트 설정에 Google 캘린더 Client ID가 아직 없어요"); return; }
+    try{
+      await getToken(true);
+      MCP=gcalAdapter; saveSettings({gcalOn:true}); toast("📅 Google 캘린더를 연결했어요");
+    }catch(e){ console.warn(e); toast("연결하지 못했어요 · 창을 닫았거나 권한을 허용하지 않았어요"); }
+  };
+  $("gDisconnect").onclick=()=>{
+    try{ if (GCAL.token && window.google) google.accounts.oauth2.revoke(GCAL.token, ()=>{}); }catch(_){}
+    GCAL.token=null; GCAL.exp=0; try{ localStorage.removeItem("dq_gtok_cache"); }catch(_){}
+    MCP=null; saveSettings({gcalOn:false, gcalDefault:false}); toast("Google 캘린더 연결을 끊었어요 (이미 들어간 일정은 그대로예요)");
+  };
 })();
 </script>
 </body>
