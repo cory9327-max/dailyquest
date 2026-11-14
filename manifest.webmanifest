@@ -1,0 +1,9 @@
+{
+  "name": "데일리 퀘스트",
+  "short_name": "데일리 퀘스트",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#14121f",
+  "theme_color": "#14121f",
+  "icons": [{ "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+}
