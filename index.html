@@ -1000,8 +1000,9 @@
     </div>
     <div class="field"><label>한마디 (선택)</label>
       <input type="text" id="gfMsg" maxlength="60" placeholder="예: 같이 힘내자!" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:11px 12px;outline:none"></div>
-    <p class="hint">받는 사람이 '수락'하면 그 사람의 퀘스트·상점에 추가돼요. 추가된 뒤에는 받은 사람이 직접 고치거나 지울 수 있어요.</p>
-    <div class="actions"><button type="button" class="btn ghost" id="gfCancel">취소</button><button type="submit" class="btn">보내기</button></div>
+    <p class="hint">받는 사람이 '수락'하면 그 사람의 퀘스트·상점에 추가돼요. 보낸 뒤에도 '내가 보낸 선물'에서 수정할 수 있어요.</p>
+    <p class="hint hidden" id="gfEditHint" style="color:var(--gold2)"></p>
+    <div class="actions"><button type="button" class="btn ghost" id="gfCancel">취소</button><button type="submit" class="btn" id="gfSend">보내기</button></div>
   </form>
 </div>
 
@@ -3862,7 +3863,7 @@
   function syncGiftSubs(){
     for (const gid of P.groups.keys()){
       const col=FB.fs.collection("groups").doc(gid).collection("gifts");
-      if (!PQ.subs.has("gt:"+gid)) PQ.subs.set("gt:"+gid, col.where("to","==",S.uid).onSnapshot(s=>{ GF.inbox.set(gid,new Map(s.docs.map(d=>[d.id,d.data()]))); render(); renderParty(); }, e=>console.warn("gifts in",e)));
+      if (!PQ.subs.has("gt:"+gid)) PQ.subs.set("gt:"+gid, col.where("to","==",S.uid).onSnapshot(s=>{ GF.inbox.set(gid,new Map(s.docs.map(d=>[d.id,d.data()]))); render(); renderParty(); scheduleGiftEdits(); }, e=>console.warn("gifts in",e)));
       if (!PQ.subs.has("gf:"+gid)) PQ.subs.set("gf:"+gid, col.where("from","==",S.uid).onSnapshot(s=>{ GF.outbox.set(gid,new Map(s.docs.map(d=>[d.id,d.data()]))); renderParty(); }, e=>console.warn("gifts out",e)));
     }
     for (const [key,un] of PQ.subs){ if (!/^g[tf]:/.test(key)) continue; const gid=key.slice(3); if (!P.groups.has(gid)){ un(); PQ.subs.delete(key); GF.inbox.delete(gid); GF.outbox.delete(gid); } }
@@ -3897,28 +3898,63 @@
     box.appendChild(card);
   }
   const clampI=(v,a,b,d)=>{ v=Math.round(Number(v)); return v>=a&&v<=b ? v : d; };
+  // fields a gift controls (the rest of the quest/item — category, steps, bonus… — stays the recipient's)
+  function giftQuestFields(d){
+    const q={title:String(d.title||"").slice(0,80)||"선물 퀘스트", xp:clampI(d.xp,1,5,3)};
+    if (d.type==="weekly"){ q.type="weekly"; q.anyDay=true; }
+    else if (d.type==="monthly"){ q.type="monthly"; q.anyDay=true; }
+    else if (d.type==="once"){ q.type="once"; q.date=/^\d{4}-\d{2}-\d{2}$/.test(d.date||"") ? d.date : todayKey(); }
+    else q.type="daily";
+    if (d.when && WHEN[d.when]) q.when=d.when;
+    return q;
+  }
+  function giftItemFields(d,fromUid){
+    const it={name:String(d.name||"").slice(0,30)||"선물 상품", cost:clampI(d.cost,1,99999,30), emoji:String(d.emoji||"").slice(0,4), limit:["none","day","week","month","once"].includes(d.limit)?d.limit:"none"};
+    if (it.limit==="week"||it.limit==="month") it.limitN=clampI(d.limitN,1,99,1);
+    if (d.giftOnly) it.giftOnly=fromUid; else if (d.party) it.party=true;
+    return it;
+  }
+  const GIFT_Q_KEYS=["title","xp","type","anyDay","date","when","days","every","mday"], GIFT_I_KEYS=["name","cost","emoji","limit","limitN","giftOnly","party"];
   async function answerGift(gid,id,g,accept){
     const ref=FB.fs.collection("groups").doc(gid).collection("gifts").doc(id);
     if (accept){
-      const d=g.data||{}, from=String(g.fromNick||"파티원").slice(0,16);
+      const d=g.data||{}, from=String(g.fromNick||"파티원").slice(0,16), link={giftRef:gid+"/"+id, giftRev:Number(g.rev)||0};
       if (g.kind==="quest"){
-        const q={title:String(d.title||"").slice(0,80)||"선물 퀘스트", xp:clampI(d.xp,1,5,3), start:todayKey(), created:Date.now(), from, fromUid:g.from};
-        if (d.type==="weekly"){ q.type="weekly"; q.anyDay=true; }
-        else if (d.type==="monthly"){ q.type="monthly"; q.anyDay=true; }
-        else if (d.type==="once"){ q.type="once"; q.date=/^\d{4}-\d{2}-\d{2}$/.test(d.date||"") && d.date>=todayKey() ? d.date : todayKey(); }
-        else q.type="daily";
-        if (d.when && WHEN[d.when]) q.when=d.when;
+        const q={...giftQuestFields(d), start:todayKey(), created:Date.now(), from, fromUid:g.from, ...link};
+        if (q.type==="once" && q.date<todayKey()) q.date=todayKey();
         saveQuest("q"+Date.now().toString(36)+Math.random().toString(36).slice(2,7), q);
       } else {
-        const it={name:String(d.name||"").slice(0,30)||"선물 상품", cost:clampI(d.cost,1,99999,30), emoji:String(d.emoji||"").slice(0,4), limit:["none","day","week","month","once"].includes(d.limit)?d.limit:"none", created:Date.now(), from};
-        if (it.limit==="week"||it.limit==="month") it.limitN=clampI(d.limitN,1,99,1);
-        if (d.giftOnly) it.giftOnly=g.from; else if (d.party) it.party=true;
-        saveItem("s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), it);
+        saveItem("s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), {...giftItemFields(d,g.from), created:Date.now(), from, ...link});
       }
     }
     try{ await ref.update({status: accept?"accepted":"declined", answered: firebase.firestore.FieldValue.serverTimestamp()}); }
     catch(e){ console.warn(e); }
     toast(accept ? (g.kind==="shop"?"🛒 상점에 추가했어요":"⚔️ 퀘스트에 추가했어요") : "거절했어요");
+  }
+
+  // the sender changed a gift I already accepted → update my linked quest/item
+  let geTimer=null;
+  function scheduleGiftEdits(){ clearTimeout(geTimer); geTimer=setTimeout(applyGiftEdits,600); }
+  function applyGiftEdits(){
+    if (!S.loaded) return;
+    for (const [gid,m] of GF.inbox) for (const [id,g] of m){
+      if (g.status!=="accepted") continue;
+      const ref=gid+"/"+id, rev=Number(g.rev)||0, d=g.data||{};
+      const store = g.kind==="shop" ? S.shop : S.quests;
+      let key=null, cur=null;
+      for (const [k,v] of store) if (v.giftRef===ref){ key=k; cur=v; break; }
+      if (!cur){ // gifts accepted before linking existed: match by sender + name once
+        for (const [k,v] of store) if (!v.giftRef && (g.kind==="shop" ? (v.from===g.fromNick && v.name===(g.prevName||d.name)) : (v.fromUid===g.from && v.title===(g.prevTitle||d.title)))){ key=k; cur=v; break; }
+        if (!cur) continue;
+        if (!(rev>0)){ (g.kind==="shop"?saveItem:saveQuest)(key,{...cur, giftRef:ref, giftRev:0}); continue; }
+      }
+      if ((Number(cur.giftRev)||0) >= rev) continue;
+      const next={...cur};
+      (g.kind==="shop"?GIFT_I_KEYS:GIFT_Q_KEYS).forEach(k=>delete next[k]);
+      Object.assign(next, g.kind==="shop" ? giftItemFields(d,g.from) : giftQuestFields(d), {giftRef:ref, giftRev:rev});
+      if (g.kind==="shop") saveItem(key,next); else saveQuest(key,next);
+      toast("🎁 "+(g.fromNick||"파티원")+"님이 '"+(g.kind==="shop"?next.name:next.title)+"'을(를) 수정했어요");
+    }
   }
 
   // sent list on the party card
@@ -3932,18 +3968,34 @@
       const t=document.createElement("span"); t.className="st"; t.textContent="→ "+(g.toNick||"파티원")+" · "+giftSummary(g);
       const s=document.createElement("span"); s.className="ss "+g.status; s.textContent={pending:"대기",accepted:"수락",declined:"거절"}[g.status]||g.status;
       const x=document.createElement("button"); x.type="button"; x.className="linkbtn"; x.style.color="var(--dim)"; x.textContent=g.status==="pending"?"취소":"지우기";
-      x.onclick=async()=>{ try{ await FB.fs.collection("groups").doc(gid).collection("gifts").doc(id).delete(); }catch(_){ toast("지우지 못했어요"); } };
-      r.append(t,s,x); w.appendChild(r);
+      x.onclick=async()=>{
+        if (g.status==="accepted" && x.textContent!=="정말 지우기"){ x.textContent="정말 지우기"; toast("지우면 더 이상 이 선물을 수정할 수 없어요 (상대 쪽 퀘스트·상품은 남아요)"); return; }
+        try{ await FB.fs.collection("groups").doc(gid).collection("gifts").doc(id).delete(); }catch(_){ toast("지우지 못했어요"); } };
+      if (g.status!=="declined"){ const ed=document.createElement("button"); ed.type="button"; ed.className="linkbtn"; ed.textContent="수정";
+        ed.onclick=()=>openGift(gid, g.to, g.toNick||"파티원", {id, g}); r.append(t,s,ed,x); }
+      else r.append(t,s,x);
+      w.appendChild(r);
     });
     return w;
   }
 
   // gift editor
   let gTo=null, gKind="quest", gType="daily", gXp=3, gLimit="none", gWhen="", gPay="p";
-  function openGift(gid,uid,nick){
-    gTo={gid,uid,nick}; gKind="quest"; gType="daily"; gXp=3; gLimit="none"; gWhen=""; gPay="p";
-    $("gfTitleH").textContent="🎁 "+nick+"님에게 만들어 주기";
+  let gEdit=null;
+  function openGift(gid,uid,nick,edit){
+    gTo={gid,uid,nick}; gEdit=edit||null; gKind="quest"; gType="daily"; gXp=3; gLimit="none"; gWhen=""; gPay="p";
     ["gfName","gfMsg","gfEmoji"].forEach(id=>$(id).value=""); $("gfCost").value=30; $("gfLimitN").value=1; $("gfDate").value=todayKey();
+    if (gEdit){
+      const g=gEdit.g, d=g.data||{}; gKind=g.kind;
+      if (gKind==="quest"){ $("gfName").value=d.title||""; gXp=clampI(d.xp,1,5,3); gType=d.type||"daily"; gWhen=d.when||""; if (d.date) $("gfDate").value=d.date; }
+      else { $("gfName").value=d.name||""; $("gfEmoji").value=d.emoji||""; $("gfCost").value=d.cost||30; gLimit=d.limit||"none"; $("gfLimitN").value=d.limitN||1; gPay=d.giftOnly?"gift":d.party?"party":"p"; }
+      $("gfMsg").value=g.msg||"";
+    }
+    $("gfTitleH").textContent = gEdit ? "✏️ "+nick+"님에게 준 "+(gKind==="shop"?"상품":"퀘스트")+" 수정" : "🎁 "+nick+"님에게 만들어 주기";
+    $("gfKind").classList.toggle("hidden", !!gEdit);
+    $("gfSend").textContent = gEdit ? "수정 보내기" : "보내기";
+    $("gfEditHint").classList.toggle("hidden", !gEdit);
+    $("gfEditHint").textContent = gEdit && gEdit.g.status==="accepted" ? "상대가 앱을 열면 바뀐 내용이 상대 "+(gKind==="shop"?"상점":"퀘스트")+"에 자동으로 반영돼요. (상대가 정한 범주·단계·기록은 그대로예요)" : "아직 수락 전이라, 수락할 때 바뀐 내용으로 추가돼요.";
     syncGift(); $("gfModal").classList.add("open"); setTimeout(()=>$("gfName").focus(),50);
   }
   function syncGift(){
@@ -3972,10 +4024,20 @@
     else { const cost=Math.round(Number($("gfCost").value)); if(!(cost>=1&&cost<=99999)){ toast("가격은 1~99999P 사이로 넣어주세요"); return; }
       data={name:name.slice(0,30), cost, emoji:$("gfEmoji").value.trim().slice(0,4), limit:gLimit}; if (gLimit==="week"||gLimit==="month") data.limitN=clampI($("gfLimitN").value,1,99,1); if (gPay==="party") data.party=true; if (gPay==="gift") data.giftOnly=true; }
     try{
-      await FB.fs.collection("groups").doc(gTo.gid).collection("gifts").add({to:gTo.uid, toNick:gTo.nick, from:S.uid, fromNick:myNick()||"모험가", kind:gKind, data,
-        msg:$("gfMsg").value.trim().slice(0,60), status:"pending", created:firebase.firestore.FieldValue.serverTimestamp()});
-      $("gfModal").classList.remove("open"); toast("🎁 "+gTo.nick+"님에게 보냈어요 · 수락하면 추가돼요");
-    }catch(err){ console.warn(err); toast("보내지 못했어요 (파티 권한 확인)"); }
+      const col=FB.fs.collection("groups").doc(gTo.gid).collection("gifts");
+      if (gEdit){
+        const g=gEdit.g, prev=g.data||{};
+        const upd={data, msg:$("gfMsg").value.trim().slice(0,60), rev:(Number(g.rev)||0)+1, edited:firebase.firestore.FieldValue.serverTimestamp()};
+        // remember the first name so the recipient can still find gifts accepted before linking existed
+        if (gKind==="shop") upd.prevName = g.prevName || prev.name; else upd.prevTitle = g.prevTitle || prev.title;
+        await col.doc(gEdit.id).update(upd);
+        $("gfModal").classList.remove("open"); toast("✏️ 수정했어요 · "+gTo.nick+"님 화면에 반영돼요");
+      } else {
+        await col.add({to:gTo.uid, toNick:gTo.nick, from:S.uid, fromNick:myNick()||"모험가", kind:gKind, data,
+          msg:$("gfMsg").value.trim().slice(0,60), status:"pending", created:firebase.firestore.FieldValue.serverTimestamp()});
+        $("gfModal").classList.remove("open"); toast("🎁 "+gTo.nick+"님에게 보냈어요 · 수락하면 추가돼요");
+      }
+    }catch(err){ console.warn(err); toast(gEdit?"수정하지 못했어요 (보안 규칙 업데이트 필요)":"보내지 못했어요 (파티 권한 확인)"); }
   });
   // ---------- Google Calendar, direct (Google Identity Services + Calendar API) ----------
   // Drives the same sync/import code the Claude version uses (it calls MCP.callTool(...)).
