@@ -219,6 +219,7 @@
 
   #viewParty{margin-top:16px}
   #partyToday{margin-top:12px}
+  #gfParty button[data-v="gift"]{flex:1 0 100%}
   .sharebox{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px}
   .sbtitle{font-weight:500;font-size:14px}
   .pevs{display:flex;flex-direction:column}
@@ -522,6 +523,7 @@
   <div id="viewShop" class="hidden">
     <div class="card balcard" style="margin-top:0">
       <div><small>💰 개인 포인트 (내 퀘스트)</small><b><span id="shopBal">0</span><em>P</em></b><div class="hint" id="shopEarned" style="margin:2px 0 0"></div>
+        <div class="hint hidden" id="shopGift" style="margin:6px 0 0;color:#ffa3c4"></div>
         <div class="hidden" id="shopParty" style="margin-top:10px"><small>🎟 파티 포인트 (파티 퀘스트)</small><b class="ppb"><span id="shopPartyBal">0</span><em>🎟</em></b><div class="hint" id="shopPartyEarned" style="margin:2px 0 0"></div></div></div>
       <button type="button" class="btn" id="shopAdd" style="padding:9px 14px">+ 상품 추가</button>
     </div>
@@ -889,6 +891,7 @@
       <label>가격</label>
       <div class="timerow"><input type="number" id="iCost" min="1" max="99999" inputmode="numeric" value="30" style="width:100px;font-family:'Do Hyeon';font-size:18px;color:var(--gold)"><span>P</span></div>
     </div>
+    <div class="hint hidden" id="iGiftNote" style="margin:0 0 12px;color:#ffa3c4"></div>
     <div class="field hidden" id="iPartyField">
       <label>살 때 쓸 수 있는 포인트</label>
       <div class="seg" id="iParty"><button type="button" data-v="0">💰 개인 포인트만</button><button type="button" data-v="1">💰+🎟 파티 포인트도 함께</button></div>
@@ -954,7 +957,8 @@
       <div class="field"><label>가격</label>
         <div class="timerow"><input type="number" id="gfCost" min="1" max="99999" inputmode="numeric" value="30" style="width:100px;font-family:'Do Hyeon';font-size:18px;color:var(--gold)"><span>P</span></div></div>
       <div class="field"><label>살 때 쓸 수 있는 포인트</label>
-        <div class="seg" id="gfParty"><button type="button" data-v="0">💰 개인 포인트만</button><button type="button" data-v="1">💰+🎟 파티 포인트도</button></div></div>
+        <div class="seg" id="gfParty"><button type="button" data-v="p">💰 개인 포인트</button><button type="button" data-v="party">💰+🎟 파티 포인트도</button><button type="button" data-v="gift">🎁 내가 준 퀘스트 포인트로만</button></div>
+        <div class="hint" id="gfPayHint"></div></div>
       <div class="field"><label>구매 제한</label>
         <div class="seg" id="gfLimit"><button type="button" data-v="none">제한 없음</button><button type="button" data-v="day">하루 1번</button><button type="button" data-v="week">주 N번</button><button type="button" data-v="month">월 N번</button><button type="button" data-v="once">한 번만</button></div>
         <div class="timerow hidden" id="gfLimitNRow" style="margin-top:8px"><span>최대</span><input type="number" id="gfLimitN" min="1" max="99" inputmode="numeric" value="1" style="width:70px"><span>번</span></div></div>
@@ -1428,13 +1432,14 @@
         if (c <= Number(f.penAt||0)) extras.push({date:perEnd(f.per,pk), qid:id, pts:-Number(f.pen), kind:"pen", label:q.title+" · "+perLabel(f.per,pk)+" "+c+"회"});
         pk=perNext(f.per,pk);
       } }
-    let t=0, n=0, tParty=0; const byDay={};
+    let t=0, n=0, tParty=0; const byDay={}, gift={};
     for (const k of days){ const done=(S.days.get(k)||{}).done||{}; let x=0;
-      for (const id in done){ n++; if (held.has(k+"|"+id)) continue; const v=entryPts(done[id]); x+=v; if (done[id].pq) tParty+=v; }
+      for (const id in done){ n++; if (held.has(k+"|"+id)) continue; const v=entryPts(done[id]); x+=v; if (done[id].pq) tParty+=v;
+        const gf=done[id].gf || ((S.quests.get(id)||{}).fromUid); if (gf && !done[id].pq) gift[gf]=(gift[gf]||0)+v; }
       byDay[k]=x; t+=x; }
     for (const e of extras){ t+=e.pts; byDay[e.date]=(byDay[e.date]||0)+e.pts; }
     extras.sort((a,b)=>a.date<b.date?1:-1);
-    _ledger={t, n, tParty, byDay, held, extras, pending};
+    _ledger={t, n, tParty, gift, byDay, held, extras, pending};
     return _ledger;
   }
   function freqCount(q,k){ const f=freqOf(q); if(!f) return 0; const pk=perKey(f.per,k), end=perEnd(f.per,pk); let c=0;
@@ -1950,7 +1955,7 @@
     const p = pts(q);
     const si = kindOf(q)!=="once" ? streakInfo(q,k,"q") : {prev:0,bonus:0}, prev=si.prev, bon=si.bonus;
     const done={...((S.days.get(k)||{}).done||{})};
-    done[q.id] = {xp:p+bon, base:p, bonus:bon, streak:prev+1, t:Date.now(), title:q.title}; if (q.cat) done[q.id].cat=q.cat;
+    done[q.id] = {xp:p+bon, base:p, bonus:bon, streak:prev+1, t:Date.now(), title:q.title}; if (q.cat) done[q.id].cat=q.cat; if (q.fromUid) done[q.id].gf=q.fromUid;
     setDone(k,done); render(); writeDay(k);
     const fqc=freqOf(q);
     if (fqc && ledger().held.has(k+"|"+q.id)) floatXp(r.left+r.width/2, r.top, "+"+(p+bon)+" P 보류");
@@ -2732,8 +2737,12 @@
   function spent(){ const s=spentSplit(); return s.p+s.pp; }
   function balance(){ const L=ledger(); return (L.t - (L.tParty||0)) - spentSplit().p; }
   function partyBalance(){ return (ledger().tParty||0) - spentSplit().pp; }
+  // points earned from quests a given party member made for me (they are also part of my personal points)
+  function giftSpent(uid){ let s=0; for (const b of S.buys.values()) if (b.pay && b.pay.gf===uid) s+=Number(b.pay.p)||0; return s; }
+  function giftBalance(uid){ return Math.max(0, Math.min(((ledger().gift||{})[uid]||0) - giftSpent(uid), balance())); }
   // how much party points may go into an item (range of the party share)
   function payRange(it){
+    if (it.giftOnly){ const cost=Number(it.cost)||0, g=giftBalance(it.giftOnly); return {min:0, max:0, cost, p:g, pp:0, gift:true, ok:g>=cost}; }
     const cost=Number(it.cost)||0, p=balance(), pp=it.party ? Math.max(0,partyBalance()) : 0;
     return {min:Math.max(0,cost-Math.max(0,p)), max:Math.min(cost,pp), cost, p, pp};
   }
@@ -2756,24 +2765,26 @@
     $("shopEarned").textContent="모은 포인트 "+(L.t-(L.tParty||0)).toLocaleString()+"P · 쓴 포인트 "+sp.p.toLocaleString()+"P";
     $("shopParty").classList.toggle("hidden", !HAS_PARTY);
     $("shopPartyBal").textContent=partyBalance().toLocaleString();
+    const gl=Object.keys(L.gift||{}).map(uid=>{ const it=[...S.shop.values()].find(x=>x.giftOnly===uid); const nm=(it&&it.from)||([...S.quests.values()].find(q=>q.fromUid===uid)||{}).from||"파티원"; return nm+" "+giftBalance(uid)+"P"; });
+    $("shopGift").classList.toggle("hidden", !gl.length); $("shopGift").textContent="🎁 선물 퀘스트로 번 포인트 (개인 포인트에 포함): "+gl.join(" · ");
     $("shopPartyEarned").textContent="파티 퀘스트로 모음 "+(L.tParty||0).toLocaleString()+" · 씀 "+sp.pp.toLocaleString();
     const grid=$("shopGrid"); grid.innerHTML="";
     const items=shopList();
     if (!items.length){ grid.innerHTML='<div class="evempty" style="grid-column:1/-1">아직 상품이 없어요. <b>+ 상품 추가</b>로 나에게 줄 보상을 만들어 보세요.<br>예: ☕ 좋아하는 카페 음료 30P · 🎮 게임 1시간 50P · 🍗 치킨 150P</div>'; }
     items.forEach(it=>{
-      const ls=limitState(it), pr=payRange(it), affordable=pr.min<=pr.max, can=affordable && ls.ok;
-      const short=it.cost-(Math.max(0,bal)+(it.party?Math.max(0,partyBalance()):0));
+      const ls=limitState(it), pr=payRange(it), affordable=pr.gift ? pr.ok : pr.min<=pr.max, can=affordable && ls.ok;
+      const short = pr.gift ? it.cost-pr.p : it.cost-(Math.max(0,bal)+(it.party?Math.max(0,partyBalance()):0));
       const c=document.createElement("div"); c.className="sitem"+(ls.ok?"":" soldout");
       const em=document.createElement("div"); em.className="sem"; em.textContent=it.emoji||"🎁";
       const nm=document.createElement("div"); nm.className="snm"; nm.textContent=it.name;
-      const meta=document.createElement("div"); meta.className="smeta"; meta.textContent=[it.from?"🎁 "+it.from+"의 선물":"", HAS_PARTY&&it.party?"🎟 파티 포인트 가능":"", ls.text||""].filter(Boolean).join(" · ");
+      const meta=document.createElement("div"); meta.className="smeta"; meta.textContent=[it.from&&!it.giftOnly?"🎁 "+it.from+"의 선물":"", it.giftOnly?"🎁 "+(it.from||"파티원")+"님이 준 퀘스트 포인트로만 (보유 "+pr.p+"P)":"", HAS_PARTY&&it.party&&!it.giftOnly?"🎟 파티 포인트 가능":"", ls.text||""].filter(Boolean).join(" · ");
       const buy=document.createElement("button"); buy.type="button"; buy.className="sbuy"+(can?"":" no");
       buy.textContent = !ls.ok ? "구매 완료" : affordable ? it.cost+"P 사기" : short+"P 부족";
       buy.disabled=!can;
       buy.onclick=ev=>{ ev.stopPropagation(); askBuy(it); };
       const ed=document.createElement("button"); ed.type="button"; ed.className="sedit"; ed.textContent="⋯"; ed.setAttribute("aria-label","상품 수정");
       ed.onclick=ev=>{ ev.stopPropagation(); openItem(it.id); };
-      const prog=document.createElement("div"); prog.className="sprog"; const pi=document.createElement("i"); pi.style.width=Math.max(0,Math.min(100,(Math.max(0,bal)+(it.party?Math.max(0,partyBalance()):0))/it.cost*100))+"%"; prog.appendChild(pi);
+      const prog=document.createElement("div"); prog.className="sprog"; const pi=document.createElement("i"); pi.style.width=Math.max(0,Math.min(100,(pr.gift ? pr.p : Math.max(0,bal)+(it.party?Math.max(0,partyBalance()):0))/it.cost*100))+"%"; prog.appendChild(pi);
       c.append(ed,em,nm,meta,prog,buy); grid.appendChild(c);
     });
     // inventory: bought but not used yet
@@ -2813,13 +2824,14 @@
   let buying=null, buyPP=0;
   function syncBuySplit(){
     const it=buying, pr=payRange(it), p=it.cost-buyPP;
+    if (pr.gift){ $("buyText").textContent=it.cost+"P짜리예요. "+(it.from||"파티원")+"님이 준 퀘스트로 번 포인트로만 살 수 있어요. 사고 나면 그 포인트가 "+(pr.p-it.cost)+"P 남아요."; return; }
     $("buyMixP").textContent=p.toLocaleString(); $("buyMixPP").textContent=buyPP.toLocaleString();
     $("buyText").textContent=it.cost+"P짜리예요. 사고 나면 개인 "+(pr.p-p).toLocaleString()+"P"+(it.party&&HAS_PARTY?" · 파티 "+(pr.pp-buyPP).toLocaleString()+"🎟":"")+" 남아요.";
   }
   function askBuy(it){
     buying=it;
     $("buyTitle").textContent=(it.emoji||"🎁")+" "+it.name;
-    const pr=payRange(it), mix=HAS_PARTY && it.party && pr.max>0;
+    const pr=payRange(it), mix=HAS_PARTY && it.party && !pr.gift && pr.max>0;
     // default: spend party points first, as much as allowed
     buyPP = mix ? pr.max : 0;
     $("buyMix").classList.toggle("hidden", !mix);
@@ -2835,10 +2847,11 @@
   $("buyYes").onclick=()=>{
     const it=buying; if(!it) return; $("buyModal").classList.remove("open");
     const cur=S.shop.get(it.id); if(!cur) return;
-    const pr=payRange({...cur}), pp = (HAS_PARTY && cur.party) ? Math.min(Math.max(buyPP,pr.min),pr.max) : 0;
-    if (pr.min>pr.max || !limitState({id:it.id,...cur}).ok || cur.cost-pp>Math.max(0,pr.p)){ toast("지금은 살 수 없어요"); return; }
+    const pr=payRange({...cur}), pp = (HAS_PARTY && cur.party && !cur.giftOnly) ? Math.min(Math.max(buyPP,pr.min),pr.max) : 0;
+    if ((pr.gift ? !pr.ok : (pr.min>pr.max || cur.cost-pp>Math.max(0,pr.p))) || !limitState({id:it.id,...cur}).ok){ toast("지금은 살 수 없어요"); return; }
     const id="b"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
     const data={item:it.id, name:cur.name, emoji:cur.emoji||"", cost:cur.cost, pay:{p:cur.cost-pp, pp}, t:Date.now(), date:todayKey()};
+    if (cur.giftOnly) data.pay.gf=cur.giftOnly;
     if ($("buyNow").checked){ data.used=true; data.usedAt=Date.now(); }
     saveBuy(id,data);
     banner("구매 완료!", (cur.emoji||"🎁")+" "+cur.name+" · "+(pp ? "-"+(cur.cost-pp)+"P -"+pp+"🎟" : "-"+cur.cost+"P"));
@@ -2847,7 +2860,10 @@
   // item editor
   let iEditing=null, iLimit="none", iParty=false;
   function syncItem(){
-    $("iPartyField").classList.toggle("hidden", !HAS_PARTY);
+    const cur0 = iEditing ? S.shop.get(iEditing) : null;
+    $("iPartyField").classList.toggle("hidden", !HAS_PARTY || !!(cur0 && cur0.giftOnly));
+    $("iGiftNote").classList.toggle("hidden", !(cur0 && cur0.giftOnly));
+    if (cur0 && cur0.giftOnly) $("iGiftNote").textContent="🎁 "+(cur0.from||"파티원")+"님이 준 퀘스트로 번 포인트로만 살 수 있는 상품이에요.";
     [...$("iParty").children].forEach(b=>b.classList.toggle("on",(b.dataset.v==="1")===iParty));
     [...$("iLimit").children].forEach(b=>b.classList.toggle("on",b.dataset.v===iLimit));
     $("iLimitN").parentNode.classList.toggle("hidden", !(iLimit==="week"||iLimit==="month"));
@@ -2876,6 +2892,7 @@
     const data={name, cost, emoji:$("iEmoji").value.trim().slice(0,4), limit:iLimit, created: old&&old.created ? old.created : Date.now()};
     if (iParty) data.party=true;
     if (old && old.from) data.from=old.from;
+    if (old && old.giftOnly){ data.giftOnly=old.giftOnly; delete data.party; }
     if (iLimit==="week"||iLimit==="month"){ const n=Math.round(Number($("iLimitN").value)); if(!(n>=1&&n<=99)){ toast("1~99 사이로 넣어주세요"); return; } data.limitN=n; }
     saveItem(iEditing || ("s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)), data);
     $("iModal").classList.remove("open");
@@ -3751,7 +3768,7 @@
   }
   function giftSummary(g){
     const d=g.data||{};
-    if (g.kind==="shop") return (d.emoji||"🎁")+" "+d.name+" · "+d.cost+"P"+(d.party?" (🎟 가능)":"")+(d.limit&&d.limit!=="none"?" · "+({day:"하루 1번",week:"주 "+(d.limitN||1)+"번",month:"월 "+(d.limitN||1)+"번",once:"한 번만"}[d.limit]||""):"");
+    if (g.kind==="shop") return (d.emoji||"🎁")+" "+d.name+" · "+d.cost+"P"+(d.giftOnly?" (내가 준 퀘스트 포인트로만)":d.party?" (🎟 가능)":"")+(d.limit&&d.limit!=="none"?" · "+({day:"하루 1번",week:"주 "+(d.limitN||1)+"번",month:"월 "+(d.limitN||1)+"번",once:"한 번만"}[d.limit]||""):"");
     const per={daily:"매일",weekly:"매주 한 번",monthly:"매월 한 번",once:"한 번"+(d.date?" ("+md(d.date)+")":"")}[d.type]||"매일";
     return d.title+" · "+per+" · "+(d.xp||3)+"점";
   }
@@ -3784,7 +3801,7 @@
     if (accept){
       const d=g.data||{}, from=String(g.fromNick||"파티원").slice(0,16);
       if (g.kind==="quest"){
-        const q={title:String(d.title||"").slice(0,80)||"선물 퀘스트", xp:clampI(d.xp,1,5,3), start:todayKey(), created:Date.now(), from};
+        const q={title:String(d.title||"").slice(0,80)||"선물 퀘스트", xp:clampI(d.xp,1,5,3), start:todayKey(), created:Date.now(), from, fromUid:g.from};
         if (d.type==="weekly"){ q.type="weekly"; q.anyDay=true; }
         else if (d.type==="monthly"){ q.type="monthly"; q.anyDay=true; }
         else if (d.type==="once"){ q.type="once"; q.date=/^\d{4}-\d{2}-\d{2}$/.test(d.date||"") && d.date>=todayKey() ? d.date : todayKey(); }
@@ -3794,7 +3811,7 @@
       } else {
         const it={name:String(d.name||"").slice(0,30)||"선물 상품", cost:clampI(d.cost,1,99999,30), emoji:String(d.emoji||"").slice(0,4), limit:["none","day","week","month","once"].includes(d.limit)?d.limit:"none", created:Date.now(), from};
         if (it.limit==="week"||it.limit==="month") it.limitN=clampI(d.limitN,1,99,1);
-        if (d.party) it.party=true;
+        if (d.giftOnly) it.giftOnly=g.from; else if (d.party) it.party=true;
         saveItem("s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), it);
       }
     }
@@ -3821,9 +3838,9 @@
   }
 
   // gift editor
-  let gTo=null, gKind="quest", gType="daily", gXp=3, gLimit="none", gWhen="", gParty=false;
+  let gTo=null, gKind="quest", gType="daily", gXp=3, gLimit="none", gWhen="", gPay="p";
   function openGift(gid,uid,nick){
-    gTo={gid,uid,nick}; gKind="quest"; gType="daily"; gXp=3; gLimit="none"; gWhen=""; gParty=false;
+    gTo={gid,uid,nick}; gKind="quest"; gType="daily"; gXp=3; gLimit="none"; gWhen=""; gPay="p";
     $("gfTitleH").textContent="🎁 "+nick+"님에게 만들어 주기";
     ["gfName","gfMsg","gfEmoji"].forEach(id=>$(id).value=""); $("gfCost").value=30; $("gfLimitN").value=1; $("gfDate").value=todayKey();
     syncGift(); $("gfModal").classList.add("open"); setTimeout(()=>$("gfName").focus(),50);
@@ -3834,14 +3851,15 @@
     [...$("gfXp").children].forEach(b=>b.classList.toggle("on",Number(b.dataset.v)===gXp));
     [...$("gfLimit").children].forEach(b=>b.classList.toggle("on",b.dataset.v===gLimit));
     [...$("gfWhen").children].forEach(b=>b.classList.toggle("on",b.dataset.v===gWhen));
-    [...$("gfParty").children].forEach(b=>b.classList.toggle("on",(b.dataset.v==="1")===gParty));
+    [...$("gfParty").children].forEach(b=>b.classList.toggle("on",b.dataset.v===gPay));
+    $("gfPayHint").textContent = gPay==="gift" ? gTo.nick+"님은 내가 만들어 준 퀘스트를 해서 번 포인트로만 이 상품을 살 수 있어요." : gPay==="party" ? "개인 포인트와 파티 포인트를 섞어서 살 수 있어요." : "받는 사람의 개인 포인트로 사요.";
     $("gfQuest").classList.toggle("hidden",gKind!=="quest"); $("gfShop").classList.toggle("hidden",gKind!=="shop");
     $("gfDateRow").classList.toggle("hidden",gType!=="once");
     $("gfLimitNRow").classList.toggle("hidden",!(gLimit==="week"||gLimit==="month"));
     $("gfNameLabel").textContent = gKind==="quest" ? "퀘스트 이름" : "상품 이름";
     $("gfName").placeholder = gKind==="quest" ? "예: 하루 30분 산책하기" : "예: 주말에 영화 보기";
   }
-  [["gfParty",v=>gParty=v==="1"],["gfKind",v=>gKind=v],["gfType",v=>gType=v],["gfXp",v=>gXp=Number(v)],["gfLimit",v=>gLimit=v],["gfWhen",v=>gWhen=v]].forEach(([id,set])=>{
+  [["gfParty",v=>gPay=v],["gfKind",v=>gKind=v],["gfType",v=>gType=v],["gfXp",v=>gXp=Number(v)],["gfLimit",v=>gLimit=v],["gfWhen",v=>gWhen=v]].forEach(([id,set])=>{
     $(id).onclick=e=>{ const b=e.target.closest("button"); if(!b) return; set(b.dataset.v); syncGift(); }; });
   $("gfEmojiPick").onclick=e=>{ const b=e.target.closest("button"); if(b) $("gfEmoji").value=b.textContent; };
   $("gfCancel").onclick=()=>$("gfModal").classList.remove("open");
@@ -3851,7 +3869,7 @@
     let data;
     if (gKind==="quest"){ data={title:name.slice(0,80), xp:gXp, type:gType}; if (gType==="once") data.date=$("gfDate").value||todayKey(); if (gWhen) data.when=gWhen; }
     else { const cost=Math.round(Number($("gfCost").value)); if(!(cost>=1&&cost<=99999)){ toast("가격은 1~99999P 사이로 넣어주세요"); return; }
-      data={name:name.slice(0,30), cost, emoji:$("gfEmoji").value.trim().slice(0,4), limit:gLimit}; if (gLimit==="week"||gLimit==="month") data.limitN=clampI($("gfLimitN").value,1,99,1); if (gParty) data.party=true; }
+      data={name:name.slice(0,30), cost, emoji:$("gfEmoji").value.trim().slice(0,4), limit:gLimit}; if (gLimit==="week"||gLimit==="month") data.limitN=clampI($("gfLimitN").value,1,99,1); if (gPay==="party") data.party=true; if (gPay==="gift") data.giftOnly=true; }
     try{
       await FB.fs.collection("groups").doc(gTo.gid).collection("gifts").add({to:gTo.uid, toNick:gTo.nick, from:S.uid, fromNick:myNick()||"모험가", kind:gKind, data,
         msg:$("gfMsg").value.trim().slice(0,60), status:"pending", created:firebase.firestore.FieldValue.serverTimestamp()});
